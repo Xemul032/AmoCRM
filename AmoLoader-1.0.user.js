@@ -6,7 +6,14 @@
 // @author Рустам Кандеев, Александр Щёкин
 // @match https://cplink.amocrm.ru/*
 // @icon https://cplink.amocrm.ru/frontend/images/interface/meta/Icon-72.png
-// @grant GM_xmlhttpRequest
+// @grant        GM_xmlhttpRequest
+// @grant        GM_addStyle
+// @connect      sheets.googleapis.com
+// @connect      docs.google.com
+// @connect      script.google.com
+// @connect      script.googleusercontent.com
+// @connect      raw.githubusercontent.com
+// @connect      api.ipify.org
 // ==/UserScript==
 
 (function() {

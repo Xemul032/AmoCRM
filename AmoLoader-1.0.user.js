@@ -20,7 +20,7 @@
     'use strict';
 
     // URL основного скрипта на GitHub
-    const scriptUrl = 'https://github.com/Xemul032/AmoCRM/raw/refs/heads/main/amoCustomJS';
+    const scriptUrl = 'https://raw.githubusercontent.com/Xemul032/AmoCRM/refs/heads/main/amoCustomJS.js';
 
     // Функция для загрузки и исполнения скрипта
     function loadScript(url) {

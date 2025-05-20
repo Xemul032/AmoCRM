@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.17
+// @version      1.18
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -11,7 +11,7 @@
 (function () {
     'use strict';
 
-
+    console.log("✅ Скрипт запущен");
 
     // Шаблоны ответов по типу задачи
     const quickRepliesByType = {
@@ -39,8 +39,12 @@
             ["Взял(а) в работу", "Начата работа по сделке"],
             ["Некорректная переадресация", "Переадресовалось неверно - заявка не моя"]
         ],
+        "Новое сообщение": [
+            ["Не требует ответа", "Не требует ответа на последнее сообщение"],
+    
+        ],
 
-
+    
     };
 
     // Функция обновления модального окна
@@ -166,7 +170,7 @@
         const taskCard = container.closest(".card-task");
 
         if (!taskCard) {
-
+            console.warn("❌ Не найден .card-task");
             return "default";
         }
 
@@ -174,12 +178,12 @@
         const taskTypeElement = taskCard.querySelector("span.task-type-name-with-icon__text");
 
         if (!taskTypeElement || !taskTypeElement.hasAttribute("title")) {
-
+            console.warn("❌ Элемент с типом задачи или title не найдены");
             return "default";
         }
 
         const taskType = taskTypeElement.getAttribute("title").trim();
-
+        console.log("🟢 Тип задачи (из title):", taskType);
 
         return quickRepliesByType[taskType] ? taskType : "default";
     }
@@ -190,7 +194,7 @@
         const activeEl = document.getElementById(textareaId);
 
         if (!activeEl) {
-
+            console.warn("❌ Целевой textarea не найден:", textareaId);
             return;
         }
 
@@ -228,17 +232,17 @@
     // Основная функция инъекции
     function injectQuickReplyButton(container) {
         if (container.querySelector(".quick-reply-button")) {
-
+            console.warn("⚠️ Кнопка уже добавлена");
             return;
         }
 
         const inputEl = findTargetInput(container);
         if (!inputEl || inputEl.offsetParent === null) {
-
+            console.warn("❌ Не найдено видимое поле ввода в контейнере:", container);
             return;
         }
 
-
+        console.log("🟢 Целевое поле ввода найдено, создаю кнопку...");
 
         const button = createQuickReplyButton(container);
         button.dataset.textareaId = inputEl.id || 'textarea-' + Date.now();

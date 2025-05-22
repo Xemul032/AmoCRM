@@ -1,57 +1,46 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.18
+// @version      1.19
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
 // @grant        none
 // ==/UserScript==
-
 (function () {
     'use strict';
-
-    console.log("✅ Скрипт запущен");
 
     // Шаблоны ответов по типу задачи
     const quickRepliesByType = {
         "default": [["Нет быстрых ответов", ""]],
-
         "Связаться": [
             ["Перезвонил(а), работаю", "С клиентом связь налажена - работаю по заявке."],
             ["Перезвонил(а), не актуально", "Пропала потребность или не является заявкой"],
             ["Не берет трубку", "Не удалось связаться - не берет трубку"]
         ],
-
         "Встреча": [
             ["Встреча прошла", "Встреча состоялась, клиент заинтересован в сотрудничестве."],
             ["Перенос", "Встреча перенесена на следующую неделю."],
             ["Отмена", "Клиент отменил встречу."]
         ],
-
         "Статус сделки": [
             ["Продвижение", "Сделка продвигается."],
             ["Завершена", "Сделка успешно закрыта."],
             ["Застой", "Долгое время не было активности по сделке."]
         ],
-
         "Переадресация": [
             ["Взял(а) в работу", "Начата работа по сделке"],
             ["Некорректная переадресация", "Переадресовалось неверно - заявка не моя"]
         ],
         "Новое сообщение": [
             ["Не требует ответа", "Не требует ответа на последнее сообщение"],
-    
         ],
-
-    
     };
 
     // Функция обновления модального окна
     function updateModalContent(modal, replyList) {
         const dropdown = modal.dropdown;
         dropdown.innerHTML = "";
-
         replyList.forEach(([label, fullText]) => {
             const item = document.createElement("div");
             item.textContent = label;
@@ -62,12 +51,10 @@
                 marginBottom: "4px",
                 borderBottom: "1px solid #eee"
             });
-
             item.addEventListener("click", () => {
                 insertTextToActiveInput(fullText, modal);
                 modal.style.display = "none";
             });
-
             dropdown.appendChild(item);
         });
     }
@@ -75,11 +62,9 @@
     // Найти целевой textarea
     function findTargetInput(container) {
         let inputEl = container.querySelector("textarea.card-task__result-wrapper__inner__textarea.js-task-result-textarea");
-
         if (!inputEl) {
             inputEl = container.querySelector("textarea.card-task__result-wrapper__inner__textarea.makeroi-textarea__task.js-task-result-textarea");
         }
-
         return inputEl;
     }
 
@@ -89,11 +74,9 @@
         button.textContent = "Быстрые ответы";
         button.type = "button";
         button.className = "quick-reply-button";
-
         const originalButton = container.querySelector(".button-input_blue.card-task__button") ||
                                container.parentNode.querySelector(".button-input_blue.card-task__button") ||
                                document.querySelector(".button-input_blue.card-task__button");
-
         Object.assign(button.style, {
             marginTop: "0",
             marginRight: "8px",
@@ -112,12 +95,10 @@
             border: "none",
             borderRadius: "4px"
         });
-
         if (originalButton) {
             const styles = getComputedStyle(originalButton);
             button.style.height = styles.getPropertyValue("height");
         }
-
         return button;
     }
 
@@ -142,25 +123,20 @@
             maxWidth: "400px",
             width: "max-content"
         });
-
         const dropdown = document.createElement("div");
         modal.dropdown = dropdown;
-
         const closeBtn = document.createElement("button");
         closeBtn.textContent = "Закрыть";
         closeBtn.style.marginTop = "12px";
         closeBtn.style.padding = "6px 12px";
         closeBtn.style.float = "right";
         closeBtn.onclick = () => modal.style.display = "none";
-
         modal.appendChild(dropdown);
         modal.appendChild(closeBtn);
         document.body.appendChild(modal);
-
         window.addEventListener("click", (e) => {
             if (e.target === modal) modal.style.display = "none";
         });
-
         return modal;
     }
 
@@ -168,23 +144,15 @@
     function getTaskTypeOnClick(container) {
         // Поднимаемся до .card-task или его вариаций
         const taskCard = container.closest(".card-task");
-
         if (!taskCard) {
-            console.warn("❌ Не найден .card-task");
             return "default";
         }
-
         // Ищем span.task-type-name-with-icon__text внутри карточки
         const taskTypeElement = taskCard.querySelector("span.task-type-name-with-icon__text");
-
         if (!taskTypeElement || !taskTypeElement.hasAttribute("title")) {
-            console.warn("❌ Элемент с типом задачи или title не найдены");
             return "default";
         }
-
         const taskType = taskTypeElement.getAttribute("title").trim();
-        console.log("🟢 Тип задачи (из title):", taskType);
-
         return quickRepliesByType[taskType] ? taskType : "default";
     }
 
@@ -192,32 +160,24 @@
     function insertTextToActiveInput(text, modal) {
         const textareaId = modal.dataset.textareaId;
         const activeEl = document.getElementById(textareaId);
-
         if (!activeEl) {
-            console.warn("❌ Целевой textarea не найден:", textareaId);
             return;
         }
-
         activeEl.value = text;
-
         ['input', 'propertychange', 'change', 'focus'].forEach(eventType => {
             const event = new Event(eventType, { bubbles: true });
             activeEl.dispatchEvent(event);
         });
-
         setTimeout(() => {
             const parentContainer = activeEl.closest(".card-task__result-wrapper__inner.makeroi-task__result");
             if (parentContainer) {
                 const infoInput = parentContainer.querySelector(".makeroi-task__info_input");
                 const countSpan = infoInput?.querySelector(".makeroi-count");
-
                 if (countSpan) {
                     countSpan.textContent = text.length;
                 }
-
                 parentContainer.focus({ preventScroll: true });
             }
-
             const executeButton = parentContainer?.querySelector(".button-input_blue.card-task__button");
             if (executeButton) {
                 executeButton.classList.remove("hidden");
@@ -225,35 +185,25 @@
                 executeButton.removeAttribute("disabled");
                 executeButton.setAttribute("tabindex", "0");
             }
-
         }, 50);
     }
 
     // Основная функция инъекции
     function injectQuickReplyButton(container) {
         if (container.querySelector(".quick-reply-button")) {
-            console.warn("⚠️ Кнопка уже добавлена");
             return;
         }
-
         const inputEl = findTargetInput(container);
         if (!inputEl || inputEl.offsetParent === null) {
-            console.warn("❌ Не найдено видимое поле ввода в контейнере:", container);
             return;
         }
-
-        console.log("🟢 Целевое поле ввода найдено, создаю кнопку...");
-
         const button = createQuickReplyButton(container);
         button.dataset.textareaId = inputEl.id || 'textarea-' + Date.now();
         inputEl.id = inputEl.id || button.dataset.textareaId;
-
         const buttonContainer = container.querySelector('.card-task__result-wrapper__inner') ||
                                 container.querySelector('.makeroi-task__info_input') ||
                                 container;
-
         const originalExecuteButton = container.querySelector(".button-input_blue.card-task__button");
-
         if (originalExecuteButton && originalExecuteButton.parentNode) {
             originalExecuteButton.parentNode.insertBefore(button, originalExecuteButton);
         } else if (buttonContainer) {
@@ -266,31 +216,24 @@
         button.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-
             inputEl.focus();
-
             // ✅ Получаем тип задачи при нажатии
             const taskType = getTaskTypeOnClick(container);
             const replies = quickRepliesByType[taskType] || quickRepliesByType.default;
             updateModalContent(modal, replies);
-
             const rect = button.getBoundingClientRect();
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
-
             let top = rect.bottom + window.scrollY;
             let left = rect.left + window.scrollX;
-
             if (left + 400 > viewportWidth + window.scrollX - 20) {
                 left = rect.right + window.scrollX - 400;
             }
             if (top + 300 > viewportHeight + window.scrollY - 20) {
                 top = rect.top + window.scrollY - 300 - 10;
             }
-
             modal.style.top = `${top}px`;
             modal.style.left = `${left}px`;
-
             modal.dataset.textareaId = button.dataset.textareaId;
             modal.style.display = "block";
         });
@@ -305,12 +248,9 @@
                 ".makeroi-task__info_input",
                 ".feed-compose__message-wrapper"
             ].join(", "));
-
             containers.forEach(injectQuickReplyButton);
         });
-
         observer.observe(document.body, { childList: true, subtree: true });
-
         setInterval(() => {
             const containers = document.querySelectorAll([
                 ".card-task__result-wrapper__inner",
@@ -318,7 +258,6 @@
                 ".makeroi-task__info_input",
                 ".feed-compose__message-wrapper"
             ].join(", "));
-
             containers.forEach(injectQuickReplyButton);
         }, 2000); // Периодическая проверка
     }
@@ -326,4 +265,223 @@
     // Запуск наблюдателя
     const modal = createModal();
     watchForContainers();
+
+    function bonusAndPenalty () {
+        'use strict';
+        // === Настройки ===
+        const DEBUG = false; // Включить/выключить логи
+        const WARNING_MINUTES_START = 30;
+        const WARNING_MINUTES_END = 60;
+        const BONUS_MINUTES_START = 0;
+        const BONUS_MINUTES_END = 15;
+        const YELLOW_COLOR = [255, 255, 0];
+        const RED_COLOR = [255, 0, 0];
+        const GREEN_COLOR = [0, 255, 0];
+        const WHITE_COLOR = [255, 255, 255];
+        const SCORE_START = -50;
+        const SCORE_END = -200;
+        const BONUS_SCORE_START = 15;
+        const BONUS_SCORE_END = 0;
+        const BG_OPACITY = 0.3;
+        const CURRENT_HOUR_THRESHOLD = 11;
+        const YESTERDAY_SCORE = -300;
+        // =================
+        const MONTH_MAP = {
+            "января": 0,
+            "февраля": 1,
+            "марта": 2,
+            "апреля": 3,
+            "мая": 4,
+            "июня": 5,
+            "июля": 6,
+            "августа": 7,
+            "сентября": 8,
+            "октября": 9,
+            "ноября": 10,
+            "декабря": 11
+        };
+        function debugLog(...args) {
+            if (DEBUG) console.log('[Покрас просрочек]', ...args);
+        }
+        function getAllPipelineItems() {
+            return document.querySelectorAll('[id^="pipeline_item_"]');
+        }
+        function parseRelativeDate(text) {
+            const now = new Date();
+            let match;
+            if ((match = text.match(/Сегодня (\d{2}):(\d{2})/i))) {
+                const [, h, m] = match;
+                const date = new Date();
+                date.setHours(h, m, 0, 0);
+                return date;
+            }
+            if ((match = text.match(/Вчера (\d{2}):(\d{2})/i))) {
+                const [, h, m] = match;
+                const date = new Date();
+                date.setDate(now.getDate() - 1);
+                date.setHours(h, m, 0, 0);
+                return date;
+            }
+            if ((match = text.match(/Позавчера (\d{2}):(\d{2})/i))) {
+                const [, h, m] = match;
+                const date = new Date();
+                date.setDate(now.getDate() - 2);
+                date.setHours(h, m, 0, 0);
+                return date;
+            }
+            if ((match = text.match(/(\d{1,2})\s+(\w+)\s+(\d{2}:\d{2})/i))) {
+                const [, day, monthStr, time] = match;
+                const month = MONTH_MAP[monthStr.toLowerCase()];
+                if (month === undefined) return null;
+                const [h, m] = time.split(':');
+                const year = now.getMonth() < month ? now.getFullYear() - 1 : now.getFullYear();
+                const date = new Date(year, month, day, h, m, 0, 0);
+                return date;
+            }
+            return null;
+        }
+        function interpolateColor(start, end, factor) {
+            const result = start.map((startVal, i) =>
+                Math.round(startVal + factor * (end[i] - start[i]))
+            );
+            return `rgba(${result.join(',')},${BG_OPACITY})`;
+        }
+        function interpolateScore(diffMinutes) {
+            const clampedDiff = Math.min(Math.max(diffMinutes, WARNING_MINUTES_START), WARNING_MINUTES_END);
+            const factor = (clampedDiff - WARNING_MINUTES_START) /
+                          (WARNING_MINUTES_END - WARNING_MINUTES_START);
+            return Math.round(SCORE_START + factor * (SCORE_END - SCORE_START));
+        }
+        function interpolateBonusScore(diffMinutes) {
+            const clampedDiff = Math.min(Math.max(diffMinutes, BONUS_MINUTES_START), BONUS_MINUTES_END);
+            const factor = 1 - (clampedDiff - BONUS_MINUTES_START) /
+                          (BONUS_MINUTES_END - BONUS_MINUTES_START);
+            return Math.round(BONUS_SCORE_START * factor);
+        }
+        function roundToNearest10(value) {
+            return Math.round(value / 10) * 10;
+        }
+        function formatScoreText(score) {
+            if (score <= 0) return '';
+            const lastTwo = score % 100;
+            const last = score % 10;
+            if (lastTwo >= 11 && lastTwo <= 14) {
+                return `${score} линков`;
+            }
+            switch (last) {
+                case 1: return `${score} линк`;
+                case 2:
+                case 3:
+                case 4: return `${score} линка`;
+                default: return `${score} линков`;
+            }
+        }
+        function highlightItem(item, color, score) {
+            // Убираем подсветку и счётчик только если score == 0
+            if (score === 0) {
+                item.style.backgroundColor = '';
+                const existingCounter = item.querySelector('.delay-score-counter');
+                if (existingCounter) existingCounter.remove();
+                return;
+            }
+            // Применяем цвет фона
+            item.style.cssText = `background-color: ${color} !important;`;
+            const existingCounter = item.querySelector('.delay-score-counter');
+            if (!existingCounter) {
+                const targetElement = item.querySelector('.pipeline-unsorted__item-main > span');
+                if (targetElement) {
+                    const counter = document.createElement('div');
+                    counter.className = 'delay-score-counter';
+                    let formattedText;
+                    if (score > 0) {
+                        formattedText = `+ ${formatScoreText(score)}`;
+                    } else {
+                        formattedText = `${score} линков`;
+                    }
+                    counter.textContent = formattedText;
+                    Object.assign(counter.style, {
+                        display: 'inline-block',
+                        marginTop: '8px',
+                        padding: '6px 12px',
+                        backgroundColor: '#ffffff',
+                        color: score > 0 ? '#008000' : '#e60000',
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        borderRadius: '6px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        border: '1px solid #ccc'
+                    });
+                    targetElement.after(counter);
+                }
+            }
+        }
+        let isProcessing = false;
+        function checkAndHighlightItems() {
+            if (isProcessing) {
+                return;
+            }
+            isProcessing = true;
+            const now = new Date();
+            const currentHour = now.getHours();
+            const items = getAllPipelineItems();
+            items.forEach((item) => {
+                const dateEl = item.querySelector('.pipeline-unsorted__item-date');
+                if (!dateEl) return;
+                const text = dateEl.textContent.trim();
+                const date = parseRelativeDate(text);
+                if (!date) return;
+                const diffMinutes = (now - date) / 1000 / 60;
+                const existingCounter = item.querySelector('.delay-score-counter');
+                if (existingCounter) existingCounter.remove();
+                if (text.startsWith("Вчера") && currentHour >= CURRENT_HOUR_THRESHOLD) {
+                    highlightItem(item, 'rgba(255,0,0,0.4)', YESTERDAY_SCORE);
+                    return;
+                }
+                if (diffMinutes >= BONUS_MINUTES_START && diffMinutes < BONUS_MINUTES_END) {
+                    const factor = 1 - (diffMinutes - BONUS_MINUTES_START) /
+                                   (BONUS_MINUTES_END - BONUS_MINUTES_START);
+                    const score = interpolateBonusScore(diffMinutes);
+                    const color = interpolateColor(WHITE_COLOR, GREEN_COLOR, factor);
+                    highlightItem(item, color, score);
+                    return;
+                }
+                if (diffMinutes >= WARNING_MINUTES_START) {
+                    let color = 'rgba(255,0,0,0.3)';
+                    if (diffMinutes < WARNING_MINUTES_END) {
+                        const factor = (diffMinutes - WARNING_MINUTES_START) /
+                                       (WARNING_MINUTES_END - WARNING_MINUTES_START);
+                        color = interpolateColor(YELLOW_COLOR, RED_COLOR, factor);
+                    }
+                    const score = roundToNearest10(interpolateScore(diffMinutes));
+                    highlightItem(item, color, score);
+                }
+            });
+            isProcessing = false;
+        }
+        function startMonitoring() {
+            let attempts = 0;
+            const maxAttempts = 30;
+            const interval = setInterval(() => {
+                checkAndHighlightItems();
+                const items = getAllPipelineItems();
+                if (items.length > 0 || attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    setupObserver();
+                }
+                attempts++;
+            }, 1000);
+        }
+        function setupObserver() {
+            let observerTimeout = null;
+            const observer = new MutationObserver(() => {
+                clearTimeout(observerTimeout);
+                observerTimeout = setTimeout(() => {
+                    checkAndHighlightItems();
+                }, 500); // Дебаунс изменений
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
+        startMonitoring();
+    };
+    bonusAndPenalty();
 })();

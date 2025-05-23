@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.19
+// @version      1.20
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -484,4 +484,57 @@
         startMonitoring();
     };
     bonusAndPenalty();
+
+    
+function hideSalesbot() {
+    'use strict';
+
+    function cleanSuggestions(container) {
+        const parentDiv = container.querySelector("div");
+        if (!parentDiv) return;
+
+        // 1. Скрыть элементы с data-suggestion-type="1"
+        const elementsWithType1 = Array.from(parentDiv.children).filter(child =>
+            child.getAttribute('data-suggestion-type') === "1"
+        );
+
+        elementsWithType1.forEach(el => {
+            el.style.display = "none";
+        });
+
+        // 2. Скрыть второй дочерний div
+        const secondChildDiv = document.querySelector(
+            "#contenteditable_suggestions > div > div:nth-child(2)"
+        );
+        if (secondChildDiv) {
+            secondChildDiv.style.display = "none";
+        }
+
+        // 3. Скрыть четырнадцатый дочерний div
+        const fourteenthChildDiv = document.querySelector(
+            "#contenteditable_suggestions > div > div:nth-child(14)"
+        );
+        if (fourteenthChildDiv) {
+            fourteenthChildDiv.style.display = "none";
+        }
+    }
+
+    // Наблюдатель за DOM-изменениями
+    const observer = new MutationObserver(mutations => {
+        mutations.forEach(mutation => {
+            if (mutation.type === 'childList') {
+                const container = document.querySelector("#contenteditable_suggestions");
+                if (container) {
+                    cleanSuggestions(container);
+                }
+            }
+        });
+    });
+
+    // Начинаем наблюдение за body
+    observer.observe(document.body, { childList: true, subtree: true });
+};
+
+hideSalesbot();
+
 })();

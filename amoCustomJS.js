@@ -537,4 +537,235 @@ function hideSalesbot() {
 
 hideSalesbot();
 
+
+function AxiomAPI () {
+    'use strict';
+    let lastProcessedPhone = null;
+    const originalPlaceholders = {}; // хранилище оригинальных placeholder'ов
+
+    function cleanPhoneNumber(phone) {
+        if (!phone) return '';
+        let cleaned = phone.toString().replace(/\D/g, '');
+        if (cleaned.startsWith('7') && cleaned.length === 11) {
+            cleaned = cleaned.substring(1);
+        }
+        return cleaned;
+    }
+
+    function formatManagerName(fullName) {
+        const parts = fullName.trim().split(/\s+/);
+        if (parts.length >= 3) return `${parts[0]} ${parts[2]}`;
+        return fullName;
+    }
+
+    function getPhoneFromPage() {
+        const phoneInput = document.querySelector(
+            'div.linked-form__field-pei div.js-control-phone.control-phone input'
+        );
+        return phoneInput ? cleanPhoneNumber(phoneInput.value) : null;
+    }
+
+    async function getPersons() {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'http://192.168.137.35:3000/api/person',
+                onload: function(response) {
+                    if (response.status === 200) {
+                        resolve(JSON.parse(response.responseText));
+                    } else {
+                        reject(new Error(`Persons API error: ${response.status}`));
+                    }
+                },
+                onerror: function(err) {
+                    reject(err);
+                }
+            });
+        });
+    }
+
+    async function getClients() {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'http://192.168.137.35:3000/api/clients',
+                onload: function(response) {
+                    if (response.status === 200) {
+                        resolve(JSON.parse(response.responseText));
+                    } else {
+                        reject(new Error(`Clients API error: ${response.status}`));
+                    }
+                },
+                onerror: function(err) {
+                    reject(err);
+                }
+            });
+        });
+    }
+
+    function buildPersonMap(persons) {
+        const map = {};
+        for (const person of persons) {
+            map[person.UUID] = person;
+        }
+        return map;
+    }
+
+    function buildClientMap(clients) {
+        const map = {};
+        for (const client of clients) {
+            map[client.UUID] = client;
+        }
+        return map;
+    }
+
+    function showLoadingPlaceholder(selector) {
+        const field = document.querySelector(selector);
+        if (!field) return;
+        const input = field.querySelector("input");
+        if (!input || input.dataset.loadingInterval) return;
+        if (!originalPlaceholders[selector]) {
+            originalPlaceholders[selector] = input.placeholder;
+        }
+        input.placeholder = "Идёт поиск.";
+        let dotCount = 0;
+        const interval = setInterval(() => {
+            if (!document.body.contains(input)) {
+                clearInterval(interval);
+                return;
+            }
+            dotCount = (dotCount + 1) % 4;
+            input.placeholder = "Идёт поиск" + ".".repeat(dotCount);
+        }, 400);
+        input.dataset.loadingInterval = interval.toString();
+    }
+
+    function restorePlaceholder(selector) {
+        const field = document.querySelector(selector);
+        const input = field?.querySelector("input");
+        if (!input) return;
+        const original = originalPlaceholders[selector];
+        if (original !== undefined) {
+            input.placeholder = original;
+        }
+        if (input.dataset.loadingInterval) {
+            clearInterval(parseInt(input.dataset.loadingInterval));
+            delete input.dataset.loadingInterval;
+        }
+    }
+
+    function isUserSelected() {
+        const span = document.querySelector("#lead_main_user-users_select_holder > ul > li > span");
+        if (!span) return false;
+        const text = span.textContent.trim();
+        return text !== '' && !/^\.+$/.test(text);
+    }
+
+    function insertValueIntoField(selector, value) {
+        const field = document.querySelector(selector);
+        if (!field) return;
+        const input = field.querySelector("input");
+        if (!input) return;
+        restorePlaceholder(selector);
+        input.value = value;
+        input.readOnly = true;
+
+        if (isUserSelected()) {
+            ['input', 'change'].forEach(eventType => {
+                const event = new Event(eventType, { bubbles: true });
+                input.dispatchEvent(event);
+            });
+        }
+    }
+
+    function isFieldFilled(selector) {
+        const field = document.querySelector(selector);
+        const input = field?.querySelector("input");
+        if (!input) return false;
+        const value = input.value.trim();
+        const placeholder = input.placeholder?.trim();
+        return value !== '' && value !== placeholder;
+    }
+
+    async function findClientAndManagerByPhone(cleanedPhone) {
+        if (!cleanedPhone) return;
+
+        const managerSelector = "#edit_card > div > div:nth-child(4) > div:nth-child(5) > div.linked-form__field__value";
+        const clientSelector = "#edit_card > div > div:nth-child(4) > div:nth-child(6) > div.linked-form__field__value";
+
+        if (isFieldFilled(managerSelector) && isFieldFilled(clientSelector)) {
+            return;
+        }
+
+        showLoadingPlaceholder(managerSelector);
+        showLoadingPlaceholder(clientSelector);
+
+        try {
+            const [persons, clients] = await Promise.all([getPersons(), getClients()]);
+            const personMap = buildPersonMap(persons);
+            const clientMap = buildClientMap(clients);
+            let foundClients = [];
+            let foundManagers = [];
+
+            for (const client of clients) {
+                for (const personUUID of client.Persons) {
+                    const person = personMap[personUUID];
+                    if (person && person.Contacts) {
+                        for (const contact of person.Contacts) {
+                            const cleanedContact = cleanPhoneNumber(contact);
+                            if (cleanedContact.includes(cleanedPhone)) {
+                                foundClients.push(client.Name);
+                                const manager = personMap[client.Manager];
+                                if (manager) {
+                                    foundManagers.push(`${manager.Name} ${manager.Patronymic} ${manager.Surname}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (foundClients.length === 0) {
+                insertValueIntoField(managerSelector, "");
+                insertValueIntoField(clientSelector, "");
+                return;
+            }
+
+            if (new Set(foundManagers).size === 1) {
+                insertValueIntoField(managerSelector, formatManagerName(foundManagers[0]));
+                insertValueIntoField(clientSelector, foundClients[foundClients.length - 1]);
+            } else {
+                insertValueIntoField(managerSelector, foundManagers.map(manager => manager.split(' ')[2]).join(', '));
+                insertValueIntoField(clientSelector, "2 и более клиентов");
+            }
+        } catch (err) {
+            insertValueIntoField(managerSelector, "");
+            insertValueIntoField(clientSelector, "");
+        } finally {
+            restorePlaceholder(managerSelector);
+            restorePlaceholder(clientSelector);
+        }
+    }
+
+    function checkForPhoneInput() {
+        const currentPhone = getPhoneFromPage();
+        if (currentPhone && currentPhone !== lastProcessedPhone) {
+            lastProcessedPhone = currentPhone;
+            findClientAndManagerByPhone(currentPhone);
+        }
+    }
+
+    const observer = new MutationObserver(() => {
+        checkForPhoneInput();
+    });
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    setInterval(checkForPhoneInput, 3000);
+};
+
+AxiomAPI();
+
 })();

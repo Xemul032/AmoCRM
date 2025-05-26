@@ -8,6 +8,7 @@
 // @icon https://cplink.amocrm.ru/frontend/images/interface/meta/Icon-72.png
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
+// @connect      192.168.137.35
 // @connect      sheets.googleapis.com
 // @connect      docs.google.com
 // @connect      script.google.com

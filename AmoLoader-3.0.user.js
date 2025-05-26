@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name AmoLoader
 // @namespace http://tampermonkey.net/
-// @version 1.0
+// @version 3.0
 // @description Загружает и выполняет скрипт с GitHub
 // @author Рустам Кандеев, Александр Щёкин
 // @match https://cplink.amocrm.ru/*

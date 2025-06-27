@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.20
+// @version      1.21
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -767,5 +767,130 @@ function AxiomAPI () {
 };
 
 AxiomAPI();
+        function blurUnsorted () {
+    'use strict';
+
+    const TARGET_SELECTOR = "#card_holder > div.js-card-feed.card-holder__feed > div > div.notes-wrapper__scroller.custom-scroll > div > div.notes-wrapper__notes.js-notes";
+    const STATUS_SELECTOR = "#card_status_view_mode .pipeline-select-view__status span";
+
+    let blurApplied = false;
+
+    function isDetailPage() {
+        return window.location.pathname.includes('/leads/detail/');
+    }
+
+    function applyBlurAndNotification(container) {
+        if (blurApplied || !container) return;
+
+        // Обёртка для позиционирования
+        const wrapper = document.createElement('div');
+        wrapper.style.position = 'relative';
+        wrapper.style.display = 'block';
+        container.parentNode.insertBefore(wrapper, container);
+        wrapper.appendChild(container);
+
+        // Полупрозрачный слой с эффектом размытия
+        const overlay = document.createElement('div');
+        overlay.style.position = 'absolute';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.backdropFilter = 'blur(5px)';
+        overlay.style.webkitBackdropFilter = 'blur(5px)';
+        overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
+        overlay.style.zIndex = '9999';
+        overlay.style.pointerEvents = 'auto'; // Чтобы обрабатывать hover
+
+        // Кнопка "Взять в работу"
+        const button = document.createElement('button');
+        button.textContent = 'Взять в работу';
+        button.style.position = 'absolute';
+        button.style.top = '50%';
+        button.style.left = '50%';
+        button.style.transform = 'translate(-50%, -50%)';
+        button.style.backgroundColor = '#000';
+        button.style.color = '#fff';
+        button.style.padding = '12px 30px';
+        button.style.borderRadius = '8px';
+        button.style.fontSize = '14px';
+        button.style.fontWeight = 'bold';
+        button.style.textAlign = 'center';
+        button.style.whiteSpace = 'nowrap';
+        button.style.zIndex = '10000';
+        button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+        button.style.cursor = 'pointer';
+
+        // При клике на кнопку имитируем нажатие целевого элемента
+        button.addEventListener('click', () => {
+            const acceptButton = document.querySelector("#card_unsorted_accept > span");
+            if (acceptButton) {
+                acceptButton.click();
+            } else {
+                console.warn('[Клик] Элемент #card_unsorted_accept > span не найден');
+            }
+        });
+
+        overlay.appendChild(button);
+        wrapper.appendChild(overlay);
+
+        blurApplied = true;
+    }
+
+    function removeBlurAndNotification() {
+        if (!blurApplied) return;
+
+        const overlay = document.querySelector(`[data-blur-overlay]`);
+        if (overlay) overlay.remove();
+
+        blurApplied = false;
+    }
+
+    function checkStatusAndApplyBlur() {
+        if (!isDetailPage()) {
+            removeBlurAndNotification();
+            return;
+        }
+
+        const statusSpan = document.querySelector(STATUS_SELECTOR);
+        const container = document.querySelector(TARGET_SELECTOR);
+
+        if (!statusSpan || !container) {
+            return;
+        }
+
+        const statusText = statusSpan.textContent.trim();
+
+        if (statusText === "Неразобранное") {
+            applyBlurAndNotification(container);
+        } else {
+            removeBlurAndNotification();
+        }
+    }
+
+    // --- Отслеживаем изменения в DOM ---
+    const observer = new MutationObserver(() => {
+        checkStatusAndApplyBlur();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // --- Дополнительно: отслеживаем изменения URL без перезагрузки ---
+    const originalPushState = history.pushState;
+    history.pushState = function () {
+        originalPushState.apply(this, arguments);
+        checkStatusAndApplyBlur();
+    };
+
+    const popStateListener = () => {
+        checkStatusAndApplyBlur();
+    };
+    window.addEventListener('popstate', popStateListener);
+
+    // --- Проверяем один раз при запуске ---
+    checkStatusAndApplyBlur();
+};
+
+blurUnsorted();
 
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.21
+// @version      1.22
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -806,7 +806,7 @@ AxiomAPI();
         const button = document.createElement('button');
         button.textContent = 'Взять в работу';
         button.style.position = 'absolute';
-        button.style.top = '50%';
+        button.style.top = '90%';
         button.style.left = '50%';
         button.style.transform = 'translate(-50%, -50%)';
         button.style.backgroundColor = '#000';

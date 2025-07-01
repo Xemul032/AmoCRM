@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.22
+// @version      1.23
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -485,7 +485,7 @@
     };
     bonusAndPenalty();
 
-    
+
 function hideSalesbot() {
     'use strict';
 
@@ -767,11 +767,15 @@ function AxiomAPI () {
 };
 
 AxiomAPI();
-        function blurUnsorted () {
+
+function blurUnsorted() {
     'use strict';
 
     const TARGET_SELECTOR = "#card_holder > div.js-card-feed.card-holder__feed > div > div.notes-wrapper__scroller.custom-scroll > div > div.notes-wrapper__notes.js-notes";
     const STATUS_SELECTOR = "#card_status_view_mode .pipeline-select-view__status span";
+
+    // Селектор для скрываемого элемента (по data-id)
+    const HIDE_SELECTOR = "[data-id='amo_wapp_im']";
 
     let blurApplied = false;
 
@@ -829,6 +833,15 @@ AxiomAPI();
             } else {
                 console.warn('[Клик] Элемент #card_unsorted_accept > span не найден');
             }
+
+            // Восстанавливаем видимость элемента amo_wapp_im
+            const elementToRestore = document.querySelector(HIDE_SELECTOR);
+            if (elementToRestore) {
+                elementToRestore.style.display = '';
+            }
+
+            // Убираем оверлей
+            removeBlurAndNotification();
         });
 
         overlay.appendChild(button);
@@ -846,24 +859,31 @@ AxiomAPI();
         blurApplied = false;
     }
 
+    function hideAmoWappIm(hide = true) {
+        const elementToHide = document.querySelector(HIDE_SELECTOR);
+        if (elementToHide) {
+            elementToHide.style.display = hide ? 'none' : '';
+        }
+    }
+
     function checkStatusAndApplyBlur() {
         if (!isDetailPage()) {
             removeBlurAndNotification();
+            hideAmoWappIm(false); // восстанавливаем при уходе с карточки
             return;
         }
 
         const statusSpan = document.querySelector(STATUS_SELECTOR);
         const container = document.querySelector(TARGET_SELECTOR);
 
-        if (!statusSpan || !container) {
-            return;
-        }
-
-        const statusText = statusSpan.textContent.trim();
+        // Применяем или убираем стили скрытия
+        const statusText = statusSpan?.textContent.trim();
 
         if (statusText === "Неразобранное") {
+            hideAmoWappIm(true);
             applyBlurAndNotification(container);
         } else {
+            hideAmoWappIm(false);
             removeBlurAndNotification();
         }
     }
@@ -889,8 +909,9 @@ AxiomAPI();
 
     // --- Проверяем один раз при запуске ---
     checkStatusAndApplyBlur();
-};
+}
 
+// Запуск функции
 blurUnsorted();
 
 })();

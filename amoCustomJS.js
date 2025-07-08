@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.25
+// @version      1.26
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      script.googleusercontent.com
+// @connect      script.google.com
 // ==/UserScript==
 (function () {
     'use strict';
@@ -773,9 +775,18 @@ function blurUnsorted() {
 
     const TARGET_SELECTOR = "#card_holder > div.js-card-feed.card-holder__feed > div > div.notes-wrapper__scroller.custom-scroll > div > div.notes-wrapper__notes.js-notes";
     const STATUS_SELECTOR = "#card_status_view_mode .pipeline-select-view__status span";
-
-    // Селектор для скрываемого элемента (по data-id)
     const HIDE_SELECTOR = "[data-id='amo_wapp_im']";
+
+    const DATE_SELECTOR = "div.js-feed-note__date.feed-note__date"; // для поиска дат
+    const CARD_ACTIONS_SELECTOR = "#card_fields > div.unsorted-actions-card"; // элемент, который нужно скрыть
+
+    const USERNAME_SELECTOR = "#left_menu > div.nav__top > div.nav__top__userbar > div.nav__top__userbar__userinfo.js-manage-profile > div.nav__top__userbar__userinfo__username";
+
+    const SPREADSHEET_URL = 'https://script.google.com/macros/s/AKfycbwdNZbfEfVvWmYHksd0vJN_7D3BL4d4soyjs_qJXfRh-I5zsTFAZSTdXZCA-afsD0VO/exec '; // убедитесь, что URL правильный
+
+    const MAX_POINTS = 15; // максимальное количество баллов
+    const MIN_TIME_THRESHOLD = 1; // минуты
+    const MAX_TIME_THRESHOLD = 15; // минуты
 
     let blurApplied = false;
 
@@ -783,17 +794,92 @@ function blurUnsorted() {
         return window.location.pathname.includes('/leads/detail/');
     }
 
+    function parseCustomDate(dateStr) {
+        const now = new Date();
+        let date;
+
+        if (dateStr.startsWith("Сегодня")) {
+            const time = dateStr.replace("Сегодня ", "").trim();
+            const [hours, minutes] = time.split(":");
+            date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+        } else if (dateStr.startsWith("Вчера")) {
+            const time = dateStr.replace("Вчера ", "").trim();
+            const [hours, minutes] = time.split(":");
+            date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, hours, minutes);
+        } else {
+            date = new Date(dateStr);
+        }
+
+        return isNaN(date.getTime()) ? null : date;
+    }
+
+    function getEarliestDateAndDiff() {
+        const elements = document.querySelectorAll(DATE_SELECTOR);
+
+        if (!elements.length) return null;
+
+        const dates = [];
+
+        elements.forEach(el => {
+            const rawDate = el.textContent.trim();
+            const parsedDate = parseCustomDate(rawDate);
+            if (parsedDate) dates.push(parsedDate);
+        });
+
+        if (!dates.length) return null;
+
+        const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+        const now = new Date();
+        const diffMinutes = Math.floor((now - minDate) / 60000); // разница в минутах
+
+        return { earliest: minDate, diff: diffMinutes };
+    }
+
+function calculatePoints(diffMinutes) {
+    if (diffMinutes <= MIN_TIME_THRESHOLD) return MAX_POINTS;
+    if (diffMinutes >= MAX_TIME_THRESHOLD) return 0;
+
+    // Линейная шкала от MAX_POINTS до 1 между 1 и 15 минутами
+    const points = MAX_POINTS - Math.floor((diffMinutes / MAX_TIME_THRESHOLD) * MAX_POINTS);
+    return Math.max(0, Math.min(MAX_POINTS, points));
+}
+
+    function sendToGoogleSheet(data) {
+        const payload = JSON.stringify(data);
+
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: SPREADSHEET_URL,
+            data: payload,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            onload: function (response) {
+
+            },
+            onerror: function (err) {
+                console.error('[sendToGoogleSheet] Ошибка отправки:', err.statusText);
+            }
+        });
+    }
+
     function applyBlurAndNotification(container) {
         if (blurApplied || !container) return;
 
-        // Обёртка для позиционирования
+
+
+        const cardActions = document.querySelector(CARD_ACTIONS_SELECTOR);
+        if (cardActions) {
+            cardActions.style.display = 'none';
+
+        }
+
         const wrapper = document.createElement('div');
         wrapper.style.position = 'relative';
         wrapper.style.display = 'block';
         container.parentNode.insertBefore(wrapper, container);
         wrapper.appendChild(container);
 
-        // Полупрозрачный слой с эффектом размытия
         const overlay = document.createElement('div');
         overlay.style.position = 'absolute';
         overlay.style.top = '0';
@@ -804,9 +890,8 @@ function blurUnsorted() {
         overlay.style.webkitBackdropFilter = 'blur(5px)';
         overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.7)';
         overlay.style.zIndex = '9999';
-        overlay.style.pointerEvents = 'auto'; // Чтобы обрабатывать hover
+        overlay.style.pointerEvents = 'auto';
 
-        // Кнопка "Взять в работу"
         const button = document.createElement('button');
         button.textContent = 'Взять в работу';
         button.style.position = 'absolute';
@@ -825,23 +910,46 @@ function blurUnsorted() {
         button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
         button.style.cursor = 'pointer';
 
-        // При клике на кнопку имитируем нажатие целевого элемента
         button.addEventListener('click', () => {
+
+
             const acceptButton = document.querySelector("#card_unsorted_accept > span");
             if (acceptButton) {
                 acceptButton.click();
-            } else {
-                console.warn('[Клик] Элемент #card_unsorted_accept > span не найден');
             }
 
-            // Восстанавливаем видимость элемента amo_wapp_im
             const elementToRestore = document.querySelector(HIDE_SELECTOR);
             if (elementToRestore) {
                 elementToRestore.style.display = '';
             }
 
-            // Убираем оверлей
             removeBlurAndNotification();
+
+            const result = getEarliestDateAndDiff();
+            if (!result) {
+                console.warn('[Клик] Не удалось получить разницу во времени.');
+                return;
+            }
+
+            const bonusPoints = calculatePoints(result.diff);
+
+            const userElement = document.querySelector(USERNAME_SELECTOR);
+            const username = userElement ? userElement.textContent.trim() : 'Неизвестный пользователь';
+
+            const currentUrl = window.location.href;
+
+            // Форматируем дату из самой ранней заметки
+            const dateToAdd = result.earliest.toLocaleDateString('ru-RU'); // формат: дд.мм.гг
+
+            const payload = {
+                Имя: username,
+                Ссылка: currentUrl,
+                Бонусные_баллы: bonusPoints,
+                Дата: dateToAdd
+            };
+
+
+            sendToGoogleSheet(payload);
         });
 
         overlay.appendChild(button);
@@ -857,26 +965,27 @@ function blurUnsorted() {
         if (overlay) overlay.remove();
 
         blurApplied = false;
+
     }
 
     function hideAmoWappIm(hide = true) {
         const elementToHide = document.querySelector(HIDE_SELECTOR);
         if (elementToHide) {
             elementToHide.style.display = hide ? 'none' : '';
+
         }
     }
 
     function checkStatusAndApplyBlur() {
         if (!isDetailPage()) {
             removeBlurAndNotification();
-            hideAmoWappIm(false); // восстанавливаем при уходе с карточки
+            hideAmoWappIm(false);
             return;
         }
 
         const statusSpan = document.querySelector(STATUS_SELECTOR);
         const container = document.querySelector(TARGET_SELECTOR);
 
-        // Применяем или убираем стили скрытия
         const statusText = statusSpan?.textContent.trim();
 
         if (statusText === "Неразобранное") {
@@ -888,14 +997,12 @@ function blurUnsorted() {
         }
     }
 
-    // --- Отслеживаем изменения в DOM ---
     const observer = new MutationObserver(() => {
         checkStatusAndApplyBlur();
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // --- Дополнительно: отслеживаем изменения URL без перезагрузки ---
     const originalPushState = history.pushState;
     history.pushState = function () {
         originalPushState.apply(this, arguments);
@@ -905,10 +1012,11 @@ function blurUnsorted() {
     const popStateListener = () => {
         checkStatusAndApplyBlur();
     };
+
     window.addEventListener('popstate', popStateListener);
 
-    // --- Проверяем один раз при запуске ---
     checkStatusAndApplyBlur();
+
 }
 
 // Запуск функции

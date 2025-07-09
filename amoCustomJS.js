@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.27
+// @version      1.28
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -275,18 +275,18 @@
         const WARNING_MINUTES_START = 16;
         const WARNING_MINUTES_END = 30;
         const BONUS_MINUTES_START = 0;
-        const BONUS_MINUTES_END = 60;
+        const BONUS_MINUTES_END = 15;
         const YELLOW_COLOR = [255, 255, 0];
         const RED_COLOR = [255, 0, 0];
         const GREEN_COLOR = [0, 255, 0];
         const WHITE_COLOR = [255, 255, 255];
-        const SCORE_START = -50;
-        const SCORE_END = -200;
+        const SCORE_START = -10;
+        const SCORE_END = -100;
         const BONUS_SCORE_START = 15;
         const BONUS_SCORE_END = 0;
         const BG_OPACITY = 0.3;
         const CURRENT_HOUR_THRESHOLD = 11;
-        const YESTERDAY_SCORE = -300;
+        const YESTERDAY_SCORE = -200;
         // =================
         const MONTH_MAP = {
             "января": 0,

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.26
+// @version      1.27
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -280,8 +280,8 @@
         const RED_COLOR = [255, 0, 0];
         const GREEN_COLOR = [0, 255, 0];
         const WHITE_COLOR = [255, 255, 255];
-        const SCORE_START = -20;
-        const SCORE_END = -10;
+        const SCORE_START = -50;
+        const SCORE_END = -200;
         const BONUS_SCORE_START = 15;
         const BONUS_SCORE_END = 0;
         const BG_OPACITY = 0.3;

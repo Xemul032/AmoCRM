@@ -272,8 +272,8 @@
         'use strict';
         // === Настройки ===
         const DEBUG = false; // Включить/выключить логи
-        const WARNING_MINUTES_START = 30;
-        const WARNING_MINUTES_END = 60;
+        const WARNING_MINUTES_START = 16;
+        const WARNING_MINUTES_END = 30;
         const BONUS_MINUTES_START = 0;
         const BONUS_MINUTES_END = 60;
         const YELLOW_COLOR = [255, 255, 0];

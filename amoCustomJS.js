@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.28
+// @version      1.29
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1021,5 +1021,91 @@ function calculatePoints(diffMinutes) {
 
 // Запуск функции
 blurUnsorted();
+
+function notification() {
+    'use strict';
+
+    let wasVisible = false;
+
+    // Функция для клика по нужной кнопке
+    function clickTargetButton() {
+        // Кликаем по РОДИТЕЛЬСКОЙ КНОПКЕ — надёжнее
+        const targetBtn = document.querySelector("#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_actions > button > span"
+        );
+
+        if (targetBtn) {
+            targetBtn.click();
+        }
+    }
+
+    // Показ уведомления
+    function showNotification() {
+
+        // Проверка поддержки уведомлений
+        if (!("Notification" in window)) {
+            return;
+        }
+
+        // Если разрешение уже дано
+        if (Notification.permission === "granted") {
+            const notification = new Notification("🔔 Новая заявка! 🔔", {
+                body: "Кликни сюда, чтобы забрать!",
+                icon: "https://images.finder.work/sig/plain/s3:/finder/company/8d32ad67ffbf43a8a64db374b3ef3e27.png"
+            });
+
+            // При клике на уведомление — кликаем по кнопке
+            notification.onclick = function() {
+                clickTargetButton();
+                notification.close(); // Закрываем уведомление
+            };
+
+        }
+        // Если разрешение не запрашивали
+        else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(function (permission) {
+                if (permission === "granted") {
+                    const notification = new Notification("🔔 Новая заявка! 🔔", {
+                        body: "Кликни сюда, чтобы забрать!",
+                        icon: "https://images.finder.work/sig/plain/s3:/finder/company/8d32ad67ffbf43a8a64db374b3ef3e27.png"
+                    });
+
+                    notification.onclick = function() {
+                        clickTargetButton();
+                        notification.close();
+                    };
+                }
+            });
+        }
+    }
+
+    // Проверка появления целевого элемента
+    function checkElement() {
+        const element = document.querySelector(
+            "#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_progress"
+        );
+
+        if (element && !wasVisible) {
+            wasVisible = true;
+            showNotification();
+        } else if (!element && wasVisible) {
+            wasVisible = false; // Элемент скрылся — сбрасываем флаг
+        }
+    }
+
+    // Первый запуск
+    checkElement();
+
+    // MutationObserver для отслеживания изменений DOM
+    const observer = new MutationObserver(checkElement);
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // Резервная проверка раз в 500 мс
+    setInterval(checkElement, 500);
+
+};
+notification();
 
 })();

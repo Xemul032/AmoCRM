@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.29
+// @version      1.30
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1025,12 +1025,13 @@ blurUnsorted();
 function notification() {
     'use strict';
 
-    let wasVisible = false;
+    let wasVisible = false;         // Флаг для "новой заявки"
+    let wasCongratsVisible = false; // Флаг для "Поздравляем!"
 
-    // Функция для клика по нужной кнопке
+    // Функция для клика по кнопке "Забрать заявку"
     function clickTargetButton() {
-        // Кликаем по РОДИТЕЛЬСКОЙ КНОПКЕ — надёжнее
-        const targetBtn = document.querySelector("#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_actions > button > span"
+        const targetBtn = document.querySelector(
+            "#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_actions > button > span"
         );
 
         if (targetBtn) {
@@ -1038,39 +1039,44 @@ function notification() {
         }
     }
 
-    // Показ уведомления
-    function showNotification() {
+    // Функция для клика по кнопке "Перейти к сделке"
+    function clickNavigateButton() {
+        const navigateBtn = Array.from(document.querySelectorAll('button.js-smartresp-navigate-link')).find(
+            btn => btn.textContent.trim() === "Перейти к сделке"
+        );
 
-        // Проверка поддержки уведомлений
-        if (!("Notification" in window)) {
-            return;
+        if (navigateBtn) {
+            navigateBtn.click();
         }
+    }
 
-        // Если разрешение уже дано
+    // Показ уведомления для новой заявки — БЕЗ фокуса вкладки
+    function showNewRequestNotification() {
+        if (!("Notification" in window)) return;
+
         if (Notification.permission === "granted") {
             const notification = new Notification("🔔 Новая заявка! 🔔", {
                 body: "Кликни сюда, чтобы забрать!",
-                icon: "https://images.finder.work/sig/plain/s3:/finder/company/8d32ad67ffbf43a8a64db374b3ef3e27.png"
+                icon: "https://raw.githubusercontent.com/Xemul032/Axiom/refs/heads/main/notification_11682149.png"
             });
 
-            // При клике на уведомление — кликаем по кнопке
             notification.onclick = function() {
-                clickTargetButton();
-                notification.close(); // Закрываем уведомление
+                clickTargetButton(); // ← Без window.focus()
+                notification.close();
             };
 
-        }
-        // Если разрешение не запрашивали
-        else if (Notification.permission !== "denied") {
+        } else if (Notification.permission !== "denied") {
             Notification.requestPermission().then(function (permission) {
                 if (permission === "granted") {
                     const notification = new Notification("🔔 Новая заявка! 🔔", {
                         body: "Кликни сюда, чтобы забрать!",
-                        icon: "https://images.finder.work/sig/plain/s3:/finder/company/8d32ad67ffbf43a8a64db374b3ef3e27.png"
+                        icon: "https://raw.githubusercontent.com/Xemul032/Axiom/refs/heads/main/notification_11682149.png"
                     });
 
+
+
                     notification.onclick = function() {
-                        clickTargetButton();
+                        clickTargetButton(); // ← Без window.focus()
                         notification.close();
                     };
                 }
@@ -1078,17 +1084,66 @@ function notification() {
         }
     }
 
-    // Проверка появления целевого элемента
+    // Показ уведомления для "Поздравляем!" — С фокусом вкладки
+    function showCongratsNotification() {
+        if (!("Notification" in window)) return;
+
+        if (Notification.permission === "granted") {
+            const notification = new Notification("🎉 Поздравляем! 🎉", {
+                body: "Кликни сюда, чтобы перейти к сделке!",
+                icon: "https://raw.githubusercontent.com/Xemul032/Axiom/refs/heads/main/mark_16208218.png"
+            });
+
+            notification.onclick = function() {
+                window.focus();         // ← Переключаем вкладку
+                clickNavigateButton();
+                notification.close();
+            };
+
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(function (permission) {
+                if (permission === "granted") {
+                    const notification = new Notification("🎉 Поздравляем! 🎉", {
+                        body: "Кликни сюда, чтобы перейти к сделке!",
+                        icon: "https://raw.githubusercontent.com/Xemul032/Axiom/refs/heads/main/mark_16208218.png"
+                    });
+
+                    notification.onclick = function() {
+                        window.focus();     // ← Переключаем вкладку
+                        clickNavigateButton();
+                        notification.close();
+                    };
+                }
+            });
+        }
+    }
+
+    // Проверка появления целевых элементов
     function checkElement() {
-        const element = document.querySelector(
+        // Проверка на элемент "прогресс" (новая заявка)
+        const progressElement = document.querySelector(
             "#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_progress"
         );
 
-        if (element && !wasVisible) {
+        if (progressElement && !wasVisible) {
             wasVisible = true;
-            showNotification();
-        } else if (!element && wasVisible) {
-            wasVisible = false; // Элемент скрылся — сбрасываем флаг
+            showNewRequestNotification();
+        } else if (!progressElement && wasVisible) {
+            wasVisible = false;
+        }
+
+        // Проверка на элемент "Поздравляем!"
+        const congratsElement = document.querySelector(
+            "#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div > div.wrapper_item.wrapper_item_header"
+        );
+
+        const isCongratsVisible = congratsElement && congratsElement.textContent.trim() === "Поздравляем!";
+
+        if (isCongratsVisible && !wasCongratsVisible) {
+            wasCongratsVisible = true;
+            showCongratsNotification();
+        } else if (!isCongratsVisible && wasCongratsVisible) {
+            wasCongratsVisible = false;
         }
     }
 
@@ -1104,8 +1159,8 @@ function notification() {
 
     // Резервная проверка раз в 500 мс
     setInterval(checkElement, 500);
+}
 
-};
 notification();
 
 })();

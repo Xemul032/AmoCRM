@@ -540,10 +540,10 @@ function hideSalesbot() {
 hideSalesbot();
 
 
-function AxiomAPI () {
+function AxiomAPI() {
     'use strict';
     let lastProcessedPhone = null;
-    const originalPlaceholders = {}; // хранилище оригинальных placeholder'ов
+    const originalPlaceholders = {};
 
     function cleanPhoneNumber(phone) {
         if (!phone) return '';
@@ -565,6 +565,16 @@ function AxiomAPI () {
             'div.linked-form__field-pei div.js-control-phone.control-phone input'
         );
         return phoneInput ? cleanPhoneNumber(phoneInput.value) : null;
+    }
+
+    function expandHiddenFields() {
+        const showMoreButton = document.querySelector('.js-linked-show-all-fields');
+        if (showMoreButton && !showMoreButton.classList.contains('hidden')) {
+            const style = window.getComputedStyle(showMoreButton);
+            if (style.display !== 'none') {
+                showMoreButton.click();
+            }
+        }
     }
 
     async function getPersons() {
@@ -692,22 +702,22 @@ function AxiomAPI () {
     async function findClientAndManagerByPhone(cleanedPhone) {
         if (!cleanedPhone) return;
 
-        const managerSelector = "#edit_card > div > div:nth-child(4) > div:nth-child(5) > div.linked-form__field__value";
-        const clientSelector = "#edit_card > div > div:nth-child(4) > div:nth-child(6) > div.linked-form__field__value";
+        const managerSelector = ".linked-form__fields > div:nth-child(5) > .linked-form__field__value";
+        const clientSelector = ".linked-form__fields > div:nth-child(6) > .linked-form__field__value";
 
+        // 🔹 Лог: поля уже заполнены
         if (isFieldFilled(managerSelector) && isFieldFilled(clientSelector)) {
+            console.log("[AxiomAPI] Поля уже заполнены");
             return;
         }
 
-        showLoadingPlaceholder(managerSelector);
-        showLoadingPlaceholder(clientSelector);
+        let foundClients = [];
+        let foundManagers = [];
 
         try {
             const [persons, clients] = await Promise.all([getPersons(), getClients()]);
             const personMap = buildPersonMap(persons);
             const clientMap = buildClientMap(clients);
-            let foundClients = [];
-            let foundManagers = [];
 
             for (const client of clients) {
                 for (const personUUID of client.Persons) {
@@ -727,11 +737,24 @@ function AxiomAPI () {
                 }
             }
 
+            // 🔹 Лог: ничего не найдено
             if (foundClients.length === 0) {
-                insertValueIntoField(managerSelector, "");
-                insertValueIntoField(clientSelector, "");
+                console.log("[AxiomAPI] По номеру ничего не найдено");
                 return;
             }
+
+            // 🔹 Лог: найдено — заполняем
+            console.log("[AxiomAPI] По номеру найдено, заполняю");
+
+            expandHiddenFields();
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            if (!document.querySelector(managerSelector) || !document.querySelector(clientSelector)) {
+                return;
+            }
+
+            showLoadingPlaceholder(managerSelector);
+            showLoadingPlaceholder(clientSelector);
 
             if (new Set(foundManagers).size === 1) {
                 insertValueIntoField(managerSelector, formatManagerName(foundManagers[0]));
@@ -740,12 +763,13 @@ function AxiomAPI () {
                 insertValueIntoField(managerSelector, foundManagers.map(manager => manager.split(' ')[2]).join(', '));
                 insertValueIntoField(clientSelector, "2 и более клиентов");
             }
+
         } catch (err) {
-            insertValueIntoField(managerSelector, "");
-            insertValueIntoField(clientSelector, "");
+            console.warn("[AxiomAPI] Ошибка при поиске по номеру:", err);
+            return;
         } finally {
-            restorePlaceholder(managerSelector);
-            restorePlaceholder(clientSelector);
+            if (document.querySelector(managerSelector)) restorePlaceholder(managerSelector);
+            if (document.querySelector(clientSelector)) restorePlaceholder(clientSelector);
         }
     }
 
@@ -766,10 +790,11 @@ function AxiomAPI () {
     });
 
     setInterval(checkForPhoneInput, 3000);
-};
+}
 
+// Запуск
 AxiomAPI();
-
+    
 function blurUnsorted() {
     'use strict';
 

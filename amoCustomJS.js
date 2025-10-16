@@ -705,9 +705,7 @@ function AxiomAPI() {
         const managerSelector = ".linked-form__fields > div:nth-child(5) > .linked-form__field__value";
         const clientSelector = ".linked-form__fields > div:nth-child(6) > .linked-form__field__value";
 
-        // 🔹 Лог: поля уже заполнены
         if (isFieldFilled(managerSelector) && isFieldFilled(clientSelector)) {
-            console.log("[AxiomAPI] Поля уже заполнены");
             return;
         }
 
@@ -737,14 +735,9 @@ function AxiomAPI() {
                 }
             }
 
-            // 🔹 Лог: ничего не найдено
             if (foundClients.length === 0) {
-                console.log("[AxiomAPI] По номеру ничего не найдено");
                 return;
             }
-
-            // 🔹 Лог: найдено — заполняем
-            console.log("[AxiomAPI] По номеру найдено, заполняю");
 
             expandHiddenFields();
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -764,8 +757,17 @@ function AxiomAPI() {
                 insertValueIntoField(clientSelector, "2 и более клиентов");
             }
 
+            setTimeout(() => {
+                const saveButtonSpan = document.querySelector("#save_and_close_contacts_link > span > span");
+                if (saveButtonSpan && saveButtonSpan.textContent.trim() === "Сохранить") {
+                    const saveButton = saveButtonSpan.closest("#save_and_close_contacts_link");
+                    if (saveButton && !saveButton.disabled) {
+                        saveButton.click();
+                    }
+                }
+            }, 300);
+
         } catch (err) {
-            console.warn("[AxiomAPI] Ошибка при поиске по номеру:", err);
             return;
         } finally {
             if (document.querySelector(managerSelector)) restorePlaceholder(managerSelector);

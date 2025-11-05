@@ -1049,6 +1049,64 @@ function calculatePoints(diffMinutes) {
 // Запуск функции
 blurUnsorted();
 
+    // ==UserScript==
+// @name         Хайд логов
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Скрывает элементы с классами, содержащими: -service_message, feed-note__amojo-user, feed-note, feed-note-system-common, -tag_event. Логгирует действия.
+// @author       Xemul
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+function hideLogs () {
+    'use strict';
+
+    // Массив подстрок для поиска в классах
+    const classPatterns = [
+        '-service_message',
+        'feed-note__amojo-user',
+        'feed-note__grouped-content',
+        'feed-note-system-common',
+        '-tag_event'
+    ];
+
+    // Создаём CSS-селектор, объединяя все паттерны
+    const selectors = classPatterns.map(pattern => `[class*="${pattern}"]`).join(', ');
+
+    function hideMatchingElements() {
+        const elements = document.querySelectorAll(selectors);
+        if (elements.length === 0) {
+            return;
+        }
+
+        let count = 0;
+        elements.forEach(el => {
+            // Проверяем, не скрыт ли уже элемент (на случай повторного вызова)
+            if (el.style.display !== 'none') {
+                el.style.display = 'none';
+                count++;
+            }
+        });
+
+           }
+
+    // Запуск сразу
+    hideMatchingElements();
+
+    // Наблюдатель за изменениями DOM (для динамически загружаемого контента)
+    const observer = new MutationObserver(() => {
+        hideMatchingElements();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+};
+
+hideLogs ();
+
 function notification() {
     'use strict';
 

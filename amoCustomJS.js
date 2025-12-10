@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.32
+// @version      1.33
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -702,8 +702,8 @@ function AxiomAPI() {
     async function findClientAndManagerByPhone(cleanedPhone) {
         if (!cleanedPhone) return;
 
-        const managerSelector = ".linked-form__fields > div:nth-child(5) > .linked-form__field__value";
-        const clientSelector = ".linked-form__fields > div:nth-child(6) > .linked-form__field__value";
+        const managerSelector = ".linked-form__fields > div:nth-child(6) > .linked-form__field__value";
+        const clientSelector = ".linked-form__fields > div:nth-child(5) > .linked-form__field__value";
 
         if (isFieldFilled(managerSelector) && isFieldFilled(clientSelector)) {
             return;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.33
+// @version      1.34
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -796,7 +796,7 @@ function AxiomAPI() {
 
 // Запуск
 AxiomAPI();
-    
+
 function blurUnsorted() {
     'use strict';
 
@@ -1247,5 +1247,143 @@ function notification() {
 }
 
 notification();
+
+
+
+function newLinks() {
+    'use strict';
+
+    // ⚠️ ВСТАВЬТЕ СЮДА ВАШ URL ИЗ ЧАСТИ 1
+    const GOOGLE_SCRIPTS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxCW12WrXvYR_PUj4O8h3HQiUZVigGnNpqJrnR7lQfROILJ9GClEbnqpCjpCNc1SXGc/exec';
+
+    // CSS для анимации
+    const style = document.createElement('style');
+    style.textContent = `
+        .f5-flying-number {
+            position: fixed !important;
+            pointer-events: none;
+            font-weight: bold;
+            font-size: 18px;
+            z-index: 2147483647 !important;
+            animation: flyUpWithDirection 3s ease-out forwards;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+            white-space: nowrap;
+            color: #17A6ED;
+        }
+    `;
+    document.head.appendChild(style);
+
+    let observer = null;
+
+    // Создание летающего числа
+    function createFlyingNumber(x, y, text, type) {
+        const element = document.createElement('div');
+        element.className = `f5-flying-number ${type}`;
+        element.textContent = text;
+        const randomAngle = (Math.random() - 0.5) * 120;
+        const randomX = Math.sin(randomAngle * Math.PI / 180) * 80;
+        element.style.left = `${x}px`;
+        element.style.top = `${y}px`;
+
+        const keyframes = `
+            @keyframes flyUpWithDirection {
+                0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
+                50% { opacity: 1; transform: translate(${randomX / 2}px, -150px) scale(1.2) rotate(${randomAngle / 2}deg); }
+                100% { opacity: 0; transform: translate(${randomX}px, -350px) scale(0.8) rotate(${randomAngle}deg); }
+            }`;
+        const styleEl = document.createElement('style');
+        styleEl.textContent = keyframes;
+        document.head.appendChild(styleEl);
+        document.body.appendChild(element);
+        setTimeout(() => { element.remove(); styleEl.remove(); }, 3000);
+    }
+
+    // Получение имени пользователя
+    function getCurrentUsername() {
+        const el = document.querySelector('.nav__top__userbar__userinfo__username');
+        return el ? el.textContent.trim() : 'Неизвестный пользователь';
+    }
+
+    // Отправка данных в Google Таблицу
+    function sendToGoogleSheet(sheetName, value, username) {
+        if (GOOGLE_SCRIPTS_WEBHOOK.includes('YOUR_SCRIPT_ID')) {
+            return;
+        }
+        const payload = {
+            sheet: sheetName,
+            timestamp: new Date().toLocaleString('ru-RU'),
+            value: value,
+            username: username
+        };
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: GOOGLE_SCRIPTS_WEBHOOK,
+            headers: { 'Content-Type': 'application/json' },
+             data: JSON.stringify(payload),
+            onload: (res) => {
+                console.log('Response status:', res.status);
+            },
+            onerror: (err) => {
+                console.error('Request error:', err);
+            }
+        });
+    }
+
+    // Определение типа кнопки
+    function getButtonType(element) {
+        if (!element) return null;
+        if (element.dataset.tracked === 'true') return null;
+        let btn = element.classList.contains('button-input-inner__text') ? element : element.querySelector?.('.button-input-inner__text') || element.closest?.('.button-input-inner__text');
+        if (!btn) return null;
+        const text = btn.textContent.trim();
+        const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions, .pipeline_leads__item');
+        if (!wrapper) return null;
+        if (text === 'Принять') return { type: 'accept', element: btn };
+        if (text === 'Перейти к сделке') return { type: 'goToLead', element: btn };
+        return null;
+    }
+
+    // Обработчик клика
+    function handleButtonClick(event) {
+        const target = event.target;
+        const info = getButtonType(target);
+        if (!info) return;
+        const { type, element } = info;
+        const username = getCurrentUsername();
+        const x = event.clientX, y = event.clientY;
+        element.dataset.tracked = 'true';
+
+        if (type === 'accept') {
+            createFlyingNumber(x, y, '+1 линк', 'accept');
+            sendToGoogleSheet('Принять', '+1', username);
+        }
+        if (type === 'goToLead') {
+            createFlyingNumber(x, y, '+5 линков', 'goToLead');
+            sendToGoogleSheet('перейти', '+5', username);
+        }
+    }
+
+    // Поиск и навешивание обработчиков
+    function setupTracker() {
+        document.querySelectorAll('.button-input-inner__text').forEach(btn => {
+            const text = btn.textContent.trim();
+            if ((text === 'Принять' || text === 'Перейти к сделке') && !btn.dataset.tracked) {
+                const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions, .pipeline_leads__item');
+                if (wrapper) {
+                    btn.addEventListener('click', handleButtonClick);
+                }
+            }
+        });
+    }
+
+    document.addEventListener('click', handleButtonClick, true);
+    observer = new MutationObserver(setupTracker);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-tracked'] });
+    setupTracker();
+    setInterval(setupTracker, 3000);
+
+};
+
+newLinks();
 
 })();

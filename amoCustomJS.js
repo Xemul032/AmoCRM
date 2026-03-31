@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.34
+// @version      1.35
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1250,10 +1250,11 @@ notification();
 
 
 
+
+
 function newLinks() {
     'use strict';
 
-    // ⚠️ ВСТАВЬТЕ СЮДА ВАШ URL ИЗ ЧАСТИ 1
     const GOOGLE_SCRIPTS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxCW12WrXvYR_PUj4O8h3HQiUZVigGnNpqJrnR7lQfROILJ9GClEbnqpCjpCNc1SXGc/exec';
 
     // CSS для анимации
@@ -1274,6 +1275,7 @@ function newLinks() {
     document.head.appendChild(style);
 
     let observer = null;
+    let processedButtons = new Set();
 
     // Создание летающего числа
     function createFlyingNumber(x, y, text, type) {
@@ -1319,68 +1321,127 @@ function newLinks() {
             method: 'POST',
             url: GOOGLE_SCRIPTS_WEBHOOK,
             headers: { 'Content-Type': 'application/json' },
-             data: JSON.stringify(payload),
-            onload: (res) => {
-                console.log('Response status:', res.status);
-            },
-            onerror: (err) => {
-                console.error('Request error:', err);
+            data: JSON.stringify(payload),
+            onload: (res) => {},
+            onerror: (err) => {}
+        });
+    }
+
+    // Обработка кнопки "Перейти к сделке" - автоматическое добавление +5 линков
+    function processGoToLeadButton(buttonElement) {
+        // Создаем уникальный ID для кнопки (комбинация текста и родителя)
+        const parentDiv = buttonElement.closest('div.smartresp_wrapper_items > div');
+        if (!parentDiv) return;
+
+        const buttonId = `goto_${parentDiv.dataset.id || parentDiv.id || Date.now()}_${Date.now()}`;
+
+        if (processedButtons.has(buttonId)) return;
+
+        // Помечаем как обработанную
+        processedButtons.add(buttonId);
+
+        // Получаем координаты для анимации (центр кнопки)
+        const rect = buttonElement.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top;
+
+        // Создаем анимацию +5 линков
+        createFlyingNumber(x, y, '+5 линков', 'goToLead');
+
+        // Отправляем в таблицу
+        const username = getCurrentUsername();
+        sendToGoogleSheet('перейти', '+5', username);
+
+        // Помечаем кнопку как обработанную
+        buttonElement.dataset.autoProcessed = 'true';
+    }
+
+    // Обработка кнопки "Принять" по клику
+    function handleAcceptClick(event) {
+        const target = event.target;
+        let buttonElement = target.classList.contains('button-input-inner__text') ? target : target.closest('.button-input-inner__text');
+
+        if (!buttonElement) return;
+        if (buttonElement.dataset.tracked === 'true') return;
+
+        const text = buttonElement.textContent.trim();
+        if (text !== 'Принять') return;
+
+        const wrapper = buttonElement.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions');
+        if (!wrapper) return;
+
+        buttonElement.dataset.tracked = 'true';
+
+        const x = event.clientX;
+        const y = event.clientY;
+
+        createFlyingNumber(x, y, '+1 линк', 'accept');
+
+        const username = getCurrentUsername();
+        sendToGoogleSheet('Принять', '+1', username);
+    }
+
+    // Поиск и обработка кнопок "Перейти к сделке"
+    function processGoToLeadButtons() {
+        // Ищем кнопки "Перейти к сделке" внутри #f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div
+        const containers = document.querySelectorAll('#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div');
+
+        containers.forEach(container => {
+            const goToLeadButton = container.querySelector('.button-input-inner__text');
+            if (goToLeadButton && goToLeadButton.textContent.trim() === 'Перейти к сделке' && !goToLeadButton.dataset.autoProcessed) {
+                processGoToLeadButton(goToLeadButton);
             }
         });
     }
 
-    // Определение типа кнопки
-    function getButtonType(element) {
-        if (!element) return null;
-        if (element.dataset.tracked === 'true') return null;
-        let btn = element.classList.contains('button-input-inner__text') ? element : element.querySelector?.('.button-input-inner__text') || element.closest?.('.button-input-inner__text');
-        if (!btn) return null;
-        const text = btn.textContent.trim();
-        const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions, .pipeline_leads__item');
-        if (!wrapper) return null;
-        if (text === 'Принять') return { type: 'accept', element: btn };
-        if (text === 'Перейти к сделке') return { type: 'goToLead', element: btn };
-        return null;
-    }
-
-    // Обработчик клика
-    function handleButtonClick(event) {
-        const target = event.target;
-        const info = getButtonType(target);
-        if (!info) return;
-        const { type, element } = info;
-        const username = getCurrentUsername();
-        const x = event.clientX, y = event.clientY;
-        element.dataset.tracked = 'true';
-
-        if (type === 'accept') {
-            createFlyingNumber(x, y, '+1 линк', 'accept');
-            sendToGoogleSheet('Принять', '+1', username);
-        }
-        if (type === 'goToLead') {
-            createFlyingNumber(x, y, '+5 линков', 'goToLead');
-            sendToGoogleSheet('перейти', '+5', username);
-        }
-    }
-
-    // Поиск и навешивание обработчиков
-    function setupTracker() {
+    // Поиск и навешивание обработчиков на кнопки "Принять"
+    function setupAcceptButtons() {
         document.querySelectorAll('.button-input-inner__text').forEach(btn => {
             const text = btn.textContent.trim();
-            if ((text === 'Принять' || text === 'Перейти к сделке') && !btn.dataset.tracked) {
-                const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions, .pipeline_leads__item');
+            if (text === 'Принять' && !btn.dataset.tracked) {
+                const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions');
                 if (wrapper) {
-                    btn.addEventListener('click', handleButtonClick);
+                    btn.addEventListener('click', handleAcceptClick);
                 }
             }
         });
     }
 
-    document.addEventListener('click', handleButtonClick, true);
-    observer = new MutationObserver(setupTracker);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-tracked'] });
-    setupTracker();
-    setInterval(setupTracker, 3000);
+    // MutationObserver для отслеживания новых кнопок
+    observer = new MutationObserver((mutations) => {
+        let hasNewNodes = false;
+
+        mutations.forEach(mutation => {
+            if (mutation.addedNodes.length > 0) {
+                hasNewNodes = true;
+            }
+        });
+
+        if (hasNewNodes) {
+            setTimeout(() => {
+                processGoToLeadButtons();
+                setupAcceptButtons();
+            }, 100);
+        }
+    });
+
+    // Запускаем наблюдение
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // Первичная обработка при загрузке
+    setTimeout(() => {
+        processGoToLeadButtons();
+        setupAcceptButtons();
+    }, 500);
+
+    // Периодическая проверка
+    setInterval(() => {
+        processGoToLeadButtons();
+        setupAcceptButtons();
+    }, 2000);
 
 };
 

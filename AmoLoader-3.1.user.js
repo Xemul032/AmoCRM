@@ -13,6 +13,7 @@
 // @connect      docs.google.com
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
+// @connect      googleusercontent.com
 // @connect      raw.githubusercontent.com
 // @connect      api.ipify.org
 // ==/UserScript==

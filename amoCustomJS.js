@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.38
+// @version      1.39
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1523,9 +1523,9 @@ newLinks();
     'use strict';
 
     // === Настройки ===
-    const SHEET_ID = '12odB9hWXVCWqYCJGL315lFecOqB99st9zharBnTpWzI';
+    const SHEET_ID = '2PACX-1vQBXU8TJZJsZ9Lb50UWtiJDs6IJ564Y7PBeKmwjlo--NQEDcOsuh9qhuplqUXj-lFkNP6owi5T9BZRO';
     const GID = '643816085';
-    const EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+    const EXPORT_URL = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub?output=csv&gid=${GID}`;
     const SVG_URL = 'https://raw.githubusercontent.com/Xemul032/AmoCRM/refs/heads/main/link_logo_wt.svg';
 
     const SELECTORS = {

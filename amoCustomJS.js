@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.36
+// @version      1.37
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1514,5 +1514,492 @@ function newLinks() {
 };
 
 newLinks();
+
+    function links_Bal() {
+    'use strict';
+
+    // === Настройки ===
+    const SHEET_ID = '12odB9hWXVCWqYCJGL315lFecOqB99st9zharBnTpWzI';
+    const GID = '643816085';
+    const EXPORT_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+    const SVG_URL = 'https://raw.githubusercontent.com/Xemul032/AmoCRM/refs/heads/main/link_logo_wt.svg';
+
+    const SELECTORS = {
+        navMenu: '#nav_menu',
+        userName: '#left_menu > div.nav__top > div.nav__top__userbar > div.nav__top__userbar__userinfo.js-manage-profile > div',
+        menuItem: '#nav_menu > div[class*="nav"]'
+    };
+
+    // === Стили - подстраиваем под дизайн меню ===
+    GM_addStyle(`
+        #gs-tooltip-btn {
+            /* Размеры как у остальных иконок */
+            width: 48px !important;
+            height: 48px !important;
+            min-width: 48px !important;
+            min-height: 48px !important;
+
+            /* Прозрачный фон как у других иконок */
+            background: transparent !important;
+            border: none !important;
+            outline: none !important;
+
+            /* Иконка */
+            color: rgba(255, 255, 255, 0.7) !important;
+            font-size: 28px !important;
+            cursor: pointer !important;
+
+            /* Позиционирование */
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            margin: 0 auto !important;
+            padding: 12px 0 !important;
+
+            /* Анимации */
+            transition: all 0.25s ease !important;
+            opacity: 0.85 !important;
+        }
+
+        #gs-tooltip-btn svg {
+            width: 32px !important;
+            height: 32px !important;
+            fill: rgba(255, 255, 255, 0.7) !important;
+            transition: all 0.25s ease !important;
+        }
+
+        #gs-tooltip-btn:hover svg {
+            fill: rgba(255, 255, 255, 1) !important;
+        }
+
+        #gs-tooltip-btn:hover {
+            color: rgba(255, 255, 255, 1) !important;
+            opacity: 1 !important;
+            transform: scale(1.05) !important;
+        }
+
+        #gs-tooltip-btn:active {
+            transform: scale(0.95) !important;
+        }
+
+        #gs-tooltip-btn.loading {
+            pointer-events: none;
+            opacity: 0.6 !important;
+        }
+
+        #gs-tooltip-btn.loading::after {
+            content: "";
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: rgba(255,255,255,0.8);
+            border-radius: 50%;
+            animation: gs-spin 0.8s linear infinite;
+        }
+
+        @keyframes gs-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Контейнер для кнопки с подписью (как у других элементов меню) */
+        #gs-tooltip-btn-wrapper {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            padding: 12px 0 !important;
+            cursor: pointer !important;
+            transition: all 0.25s ease !important;
+        }
+
+        #gs-tooltip-btn-wrapper:hover {
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        #gs-tooltip-btn-wrapper:hover #gs-tooltip-btn {
+            color: rgba(255, 255, 255, 1) !important;
+        }
+
+        .gs-tooltip-btn-label {
+            color: rgba(255, 255, 255, 0.7) !important;
+            font-size: 11px !important;
+            font-family: inherit !important;
+            margin-top: 4px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+
+        #gs-tooltip-btn-wrapper:hover .gs-tooltip-btn-label {
+            color: rgba(255, 255, 255, 1) !important;
+        }
+
+        /* Тултип */
+        .gs-tooltip {
+            position: fixed;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            z-index: 2147483646 !important;
+            max-width: 350px;
+            pointer-events: auto;
+            animation: gs-fadeIn 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .gs-tooltip.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        .gs-tooltip.error {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        .gs-tooltip .value {
+            font-weight: bold;
+            font-size: 20px;
+            margin-top: 6px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        @keyframes gs-fadeIn {
+            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .gs-tooltip.hide {
+            animation: gs-fadeOut 0.2s ease forwards;
+        }
+        @keyframes gs-fadeOut {
+            to { opacity: 0; transform: translateY(-10px) scale(0.95); }
+        }
+    `);
+
+    // === Глобальная переменная для SVG ===
+    let svgContent = '';
+
+    // === Загрузка SVG ===
+    function loadSVG() {
+        return new Promise((resolve) => {
+            if (svgContent) {
+                resolve(svgContent);
+                return;
+            }
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: SVG_URL,
+                onload: (response) => {
+                    if (response.status === 200) {
+                        svgContent = response.responseText;
+                        resolve(svgContent);
+                    } else {
+                        // Fallback на эмодзи если SVG не загрузился
+                        resolve('💶');
+                    }
+                },
+                onerror: () => {
+                    // Fallback на эмодзи при ошибке
+                    resolve('💶');
+                }
+            });
+        });
+    }
+
+    // === Создание кнопки ===
+    async function createButton() {
+        if (document.getElementById('gs-tooltip-btn')) return;
+
+        // Загружаем SVG
+        const iconContent = await loadSVG();
+
+        // Создаём обёртку (как у других элементов меню с подписью)
+        const wrapper = document.createElement('div');
+        wrapper.id = 'gs-tooltip-btn-wrapper';
+
+        // Создаём кнопку
+        const btn = document.createElement('button');
+        btn.id = 'gs-tooltip-btn';
+        btn.title = 'Показать баланс линков';
+        btn.type = 'button';
+
+        // Вставляем SVG или эмодзи
+        if (iconContent.includes('<svg')) {
+            btn.innerHTML = iconContent;
+        } else {
+            btn.textContent = iconContent;
+        }
+
+        // Создаём подпись (как "Почта", "Настройки" и т.д.)
+        const label = document.createElement('span');
+        label.className = 'gs-tooltip-btn-label';
+        label.textContent = 'Линки';
+
+        wrapper.appendChild(btn);
+        wrapper.appendChild(label);
+
+        // Обработчик клика на обёртку
+        wrapper.addEventListener('click', handleClick);
+
+        // Ищем контейнер меню
+        const navMenu = document.querySelector(SELECTORS.navMenu);
+        if (!navMenu) {
+            setTimeout(createButton, 500);
+            return;
+        }
+
+        // === Копируем отступы из существующих элементов меню ===
+        const menuItems = navMenu.querySelectorAll('div[class*="nav"], div[class*="menu"]');
+        let referenceElement = null;
+        let itemSpacing = '12px';
+
+        // Находим элемент "Настройки" для вставки после него
+        for (let item of menuItems) {
+            const text = item.textContent || '';
+            if (text.includes('Настройки')) {
+                referenceElement = item;
+                // Копируем padding/margin с существующего элемента
+                const computedStyle = window.getComputedStyle(item);
+                itemSpacing = computedStyle.paddingTop || computedStyle.marginTop || '12px';
+                break;
+            }
+        }
+
+        // Вставляем после "Настроек"
+        if (referenceElement && referenceElement.parentNode) {
+            referenceElement.parentNode.insertBefore(wrapper, referenceElement.nextSibling);
+        } else {
+            navMenu.appendChild(wrapper);
+        }
+
+        // Применяем отступы как у соседних элементов
+        setTimeout(() => {
+            const siblings = navMenu.children;
+            for (let sibling of siblings) {
+                if (sibling.id !== 'gs-tooltip-btn-wrapper') {
+                    const computedStyle = window.getComputedStyle(sibling);
+                    const padding = computedStyle.padding;
+                    const margin = computedStyle.margin;
+                    // Применяем похожие отступы
+                    if (padding && padding !== '0px') {
+                        wrapper.style.padding = padding;
+                    }
+                    break;
+                }
+            }
+        }, 100);
+    }
+
+// === Обработчик клика ===
+async function handleClick(event) {
+    const btn = document.getElementById('gs-tooltip-btn');
+    const wrapper = document.getElementById('gs-tooltip-btn-wrapper');
+    if (!btn || !wrapper || btn.classList.contains('loading')) return;
+
+    // Получаем координаты клика
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+
+    // Удаляем старый тултип
+    removeTooltip();
+
+    btn.classList.add('loading');
+
+    try {
+        const userName = getCurrentUserName();
+        if (!userName) {
+            showTooltip('⚠️ Не удалось получить имя пользователя', 'error', clickX, clickY);
+            return;
+        }
+
+        const data = await fetchSheetData();
+        const value = findValueByName(data, userName);
+
+        if (value !== null) {
+            // Изменено: показываем "Баланс Линков" и значение
+            showTooltip(`Баланс Линков<div class="value">${value}</div>`, 'success', clickX, clickY);
+        } else {
+            showTooltip(`❌ Пользователь "<b>${userName}</b>" не найден в таблице`, 'error', clickX, clickY);
+        }
+    } catch (err) {
+        console.error('GS Tooltip Error:', err);
+        showTooltip(`🔥 Ошибка: ${err.message}`, 'error', clickX, clickY);
+    } finally {
+        btn.classList.remove('loading');
+    }
+}
+
+    // === Получение имени пользователя из DOM ===
+    function getCurrentUserName() {
+        const el = document.querySelector(SELECTORS.userName);
+        if (!el) return null;
+
+        let name = el.textContent || el.innerText;
+        name = name.replace(/<[^>]*>/g, '').trim();
+        name = name.replace(/\s+/g, ' ');
+
+        return name || null;
+    }
+
+    // === Загрузка и парсинг Google Таблицы ===
+    function fetchSheetData() {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: EXPORT_URL,
+                headers: {
+                    'Accept': 'text/csv'
+                },
+                onload: (response) => {
+                    if (response.status === 200 || response.status === 302) {
+                        const data = parseCSV(response.responseText);
+                        resolve(data);
+                    } else {
+                        reject(new Error(`HTTP ${response.status}: ${response.statusText || 'Unknown error'}`));
+                    }
+                },
+                onerror: (err) => {
+                    console.error('GM_xmlhttpRequest error:', err);
+                    reject(new Error('Network error while fetching sheet'));
+                },
+                ontimeout: () => reject(new Error('Request timeout (15s)')),
+                timeout: 15000
+            });
+        });
+    }
+
+    // === CSV-парсер ===
+    function parseCSV(text) {
+        const rows = [];
+        let current = '';
+        let inQuotes = false;
+        const cells = [];
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const next = text[i + 1];
+
+            if (char === '"' && !inQuotes) {
+                inQuotes = true;
+            } else if (char === '"' && inQuotes && next === '"') {
+                current += '"';
+                i++;
+            } else if (char === '"' && inQuotes) {
+                inQuotes = false;
+            } else if (char === ',' && !inQuotes) {
+                cells.push(current.trim());
+                current = '';
+            } else if ((char === '\n' || char === '\r') && !inQuotes) {
+                if (current || cells.length > 0) {
+                    cells.push(current.trim());
+                    rows.push([...cells]);
+                    cells.length = 0;
+                    current = '';
+                }
+                if (char === '\r' && next === '\n') i++;
+            } else {
+                current += char;
+            }
+        }
+        if (current || cells.length > 0) {
+            cells.push(current.trim());
+            rows.push(cells);
+        }
+
+        const result = {};
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row[1] && row[2] !== undefined) {
+                const name = row[1].trim();
+                const value = row[2].trim();
+                if (name) {
+                    result[name.toLowerCase()] = value;
+                }
+            }
+        }
+        return result;
+    }
+
+    // === Поиск значения по имени ===
+    function findValueByName(data, userName) {
+        const searchKey = userName.toLowerCase();
+
+        if (data[searchKey] !== undefined) {
+            return data[searchKey];
+        }
+
+        for (const [key, value] of Object.entries(data)) {
+            if (key.includes(searchKey) || searchKey.includes(key)) {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    // === Показ тултипа ===
+    function showTooltip(html, type = '', x, y) {
+        removeTooltip();
+
+        const tooltip = document.createElement('div');
+        tooltip.className = `gs-tooltip ${type}`;
+        tooltip.innerHTML = html;
+
+        const tooltipWidth = 350;
+        const tooltipHeight = 100;
+        const padding = 15;
+
+        let left = x - tooltipWidth / 2;
+        let top = y + padding;
+
+        if (left < 10) left = 10;
+        if (left + tooltipWidth > window.innerWidth - 10) {
+            left = window.innerWidth - tooltipWidth - 10;
+        }
+        if (top + tooltipHeight > window.innerHeight - 10) {
+            top = y - tooltipHeight - padding;
+        }
+        if (top < 10) top = 10;
+
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+
+        document.body.appendChild(tooltip);
+
+        setTimeout(() => {
+            tooltip.classList.add('hide');
+            setTimeout(() => tooltip.remove(), 300);
+        }, 5000);
+
+        tooltip.addEventListener('click', () => {
+            tooltip.classList.add('hide');
+            setTimeout(() => tooltip.remove(), 300);
+        });
+    }
+
+    function removeTooltip() {
+        const t = document.querySelector('.gs-tooltip');
+        if (t) {
+            t.classList.add('hide');
+            setTimeout(() => t.remove(), 300);
+        }
+    }
+
+    // === Инициализация ===
+    function init() {
+        if (document.querySelector(SELECTORS.userName)) {
+            createButton();
+        } else {
+            setTimeout(init, 500);
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+};
+
+links_Bal();
 
 })();

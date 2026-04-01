@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.35
+// @version      1.36
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1252,6 +1252,8 @@ notification();
 
 
 
+
+
 function newLinks() {
     'use strict';
 
@@ -1276,6 +1278,7 @@ function newLinks() {
 
     let observer = null;
     let processedButtons = new Set();
+    let processedCallNotifications = new Set();
 
     // Создание летающего числа
     function createFlyingNumber(x, y, text, type) {
@@ -1329,7 +1332,6 @@ function newLinks() {
 
     // Обработка кнопки "Перейти к сделке" - автоматическое добавление +5 линков
     function processGoToLeadButton(buttonElement) {
-        // Создаем уникальный ID для кнопки (комбинация текста и родителя)
         const parentDiv = buttonElement.closest('div.smartresp_wrapper_items > div');
         if (!parentDiv) return;
 
@@ -1337,22 +1339,17 @@ function newLinks() {
 
         if (processedButtons.has(buttonId)) return;
 
-        // Помечаем как обработанную
         processedButtons.add(buttonId);
 
-        // Получаем координаты для анимации (центр кнопки)
         const rect = buttonElement.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
         const y = rect.top;
 
-        // Создаем анимацию +5 линков
         createFlyingNumber(x, y, '+5 линков', 'goToLead');
 
-        // Отправляем в таблицу
         const username = getCurrentUsername();
         sendToGoogleSheet('перейти', '+5', username);
 
-        // Помечаем кнопку как обработанную
         buttonElement.dataset.autoProcessed = 'true';
     }
 
@@ -1381,9 +1378,51 @@ function newLinks() {
         sendToGoogleSheet('Принять', '+1', username);
     }
 
+    // Обработка кнопки закрытия уведомления "Получить Линки"
+    function handleCallNotificationClose(event) {
+        const closeButton = event.target;
+
+        // Проверяем, что это кнопка закрытия
+        if (!closeButton.classList.contains('f5-notifier-notification-close')) return;
+
+        // Находим родительское уведомление
+        const notification = closeButton.closest('.f5-notifier-notification');
+        if (!notification) return;
+
+        // Проверяем, что это уведомление "Получить Линки"
+        const title = notification.querySelector('.f5-notifier-notification-head-title');
+        const content = notification.querySelector('.f5-notifier-notification-content');
+
+        const isCallNotification = (title && title.textContent.trim() === 'Получить Линки') ||
+                                   (content && content.textContent.includes('10 Линков'));
+
+        if (!isCallNotification) return;
+
+        // Получаем уникальный ID уведомления
+        const notificationId = notification.dataset.notification_id || notification.dataset.event_group;
+        if (!notificationId) return;
+
+        // Проверяем, не обрабатывали ли уже это уведомление
+        if (processedCallNotifications.has(notificationId)) return;
+
+        // Помечаем как обработанное
+        processedCallNotifications.add(notificationId);
+
+        // Получаем координаты для анимации
+        const rect = closeButton.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top;
+
+        // Создаем анимацию +10 линков
+        createFlyingNumber(x, y, '+10 линков', 'goToLead');
+
+        // Отправляем в таблицу на лист "Звонки"
+        const username = getCurrentUsername();
+        sendToGoogleSheet('Звонки', '+10', username);
+    }
+
     // Поиск и обработка кнопок "Перейти к сделке"
     function processGoToLeadButtons() {
-        // Ищем кнопки "Перейти к сделке" внутри #f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div
         const containers = document.querySelectorAll('#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div');
 
         containers.forEach(container => {
@@ -1407,7 +1446,33 @@ function newLinks() {
         });
     }
 
-    // MutationObserver для отслеживания новых кнопок
+    // Поиск и навешивание обработчиков на кнопки закрытия уведомлений "Получить Линки"
+    function setupCallNotificationHandlers() {
+        // Ищем все уведомления "Получить Линки"
+        const notifications = document.querySelectorAll('.f5-notifier-notification');
+
+        notifications.forEach(notification => {
+            const title = notification.querySelector('.f5-notifier-notification-head-title');
+            const content = notification.querySelector('.f5-notifier-notification-content');
+
+            const isCallNotification = (title && title.textContent.trim() === 'Получить Линки') ||
+                                       (content && content.textContent.includes('10 Линков'));
+
+            if (!isCallNotification) return;
+
+            const notificationId = notification.dataset.notification_id || notification.dataset.event_group;
+            if (!notificationId || processedCallNotifications.has(notificationId)) return;
+
+            // Находим кнопку закрытия внутри уведомления
+            const closeButton = notification.querySelector('.f5-notifier-notification-close');
+            if (closeButton && !closeButton.dataset.callHandlerAttached) {
+                closeButton.addEventListener('click', handleCallNotificationClose);
+                closeButton.dataset.callHandlerAttached = 'true';
+            }
+        });
+    }
+
+    // MutationObserver для отслеживания новых элементов
     observer = new MutationObserver((mutations) => {
         let hasNewNodes = false;
 
@@ -1421,6 +1486,7 @@ function newLinks() {
             setTimeout(() => {
                 processGoToLeadButtons();
                 setupAcceptButtons();
+                setupCallNotificationHandlers();
             }, 100);
         }
     });
@@ -1435,12 +1501,14 @@ function newLinks() {
     setTimeout(() => {
         processGoToLeadButtons();
         setupAcceptButtons();
+        setupCallNotificationHandlers();
     }, 500);
 
     // Периодическая проверка
     setInterval(() => {
         processGoToLeadButtons();
         setupAcceptButtons();
+        setupCallNotificationHandlers();
     }, 2000);
 
 };

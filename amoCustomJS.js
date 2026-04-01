@@ -8,6 +8,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      script.googleusercontent.com
 // @connect      script.google.com
+// @connect      raw.githubusercontent.com
+// @run-at       document-end
 // ==/UserScript==
 (function () {
     'use strict';

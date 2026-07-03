@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      1.40
+// @version      2.0
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_addStyle
 // @connect      script.googleusercontent.com
 // @connect      docs.google.com
 // @connect      googleusercontent.com
@@ -1258,751 +1259,630 @@ notification();
 
 
 
-function newLinks() {
-    'use strict';
 
-    const GOOGLE_SCRIPTS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbxCW12WrXvYR_PUj4O8h3HQiUZVigGnNpqJrnR7lQfROILJ9GClEbnqpCjpCNc1SXGc/exec';
-
-    // CSS для анимации
-    const style = document.createElement('style');
-    style.textContent = `
-        .f5-flying-number {
-            position: fixed !important;
-            pointer-events: none;
-            font-weight: bold;
-            font-size: 18px;
-            z-index: 2147483647 !important;
-            animation: flyUpWithDirection 3s ease-out forwards;
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
-            white-space: nowrap;
-            color: #17A6ED;
-        }
-    `;
-    document.head.appendChild(style);
-
-    let observer = null;
-    let processedButtons = new Set();
-    let processedCallNotifications = new Set();
-
-    // Создание летающего числа
-    function createFlyingNumber(x, y, text, type) {
-        const element = document.createElement('div');
-        element.className = `f5-flying-number ${type}`;
-        element.textContent = text;
-        const randomAngle = (Math.random() - 0.5) * 120;
-        const randomX = Math.sin(randomAngle * Math.PI / 180) * 80;
-        element.style.left = `${x}px`;
-        element.style.top = `${y}px`;
-
-        const keyframes = `
-            @keyframes flyUpWithDirection {
-                0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
-                50% { opacity: 1; transform: translate(${randomX / 2}px, -150px) scale(1.2) rotate(${randomAngle / 2}deg); }
-                100% { opacity: 0; transform: translate(${randomX}px, -350px) scale(0.8) rotate(${randomAngle}deg); }
-            }`;
-        const styleEl = document.createElement('style');
-        styleEl.textContent = keyframes;
-        document.head.appendChild(styleEl);
-        document.body.appendChild(element);
-        setTimeout(() => { element.remove(); styleEl.remove(); }, 3000);
-    }
-
-    // Получение имени пользователя
-    function getCurrentUsername() {
-        const el = document.querySelector('.nav__top__userbar__userinfo__username');
-        return el ? el.textContent.trim() : 'Неизвестный пользователь';
-    }
-
-    // Отправка данных в Google Таблицу
-    function sendToGoogleSheet(sheetName, value, username) {
-        if (GOOGLE_SCRIPTS_WEBHOOK.includes('YOUR_SCRIPT_ID')) {
-            return;
-        }
-        const payload = {
-            sheet: sheetName,
-            timestamp: new Date().toLocaleString('ru-RU'),
-            value: value,
-            username: username
-        };
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: GOOGLE_SCRIPTS_WEBHOOK,
-            headers: { 'Content-Type': 'application/json' },
-            data: JSON.stringify(payload),
-            onload: (res) => {},
-            onerror: (err) => {}
-        });
-    }
-
-    // Обработка кнопки "Перейти к сделке" - автоматическое добавление +5 линков
-    function processGoToLeadButton(buttonElement) {
-        const parentDiv = buttonElement.closest('div.smartresp_wrapper_items > div');
-        if (!parentDiv) return;
-
-        const buttonId = `goto_${parentDiv.dataset.id || parentDiv.id || Date.now()}_${Date.now()}`;
-
-        if (processedButtons.has(buttonId)) return;
-
-        processedButtons.add(buttonId);
-
-        const rect = buttonElement.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top;
-
-        createFlyingNumber(x, y, '+5 линков', 'goToLead');
-
-        const username = getCurrentUsername();
-        sendToGoogleSheet('перейти', '+5', username);
-
-        buttonElement.dataset.autoProcessed = 'true';
-    }
-
-    // Обработка кнопки "Принять" по клику
-    function handleAcceptClick(event) {
-        const target = event.target;
-        let buttonElement = target.classList.contains('button-input-inner__text') ? target : target.closest('.button-input-inner__text');
-
-        if (!buttonElement) return;
-        if (buttonElement.dataset.tracked === 'true') return;
-
-        const text = buttonElement.textContent.trim();
-        if (text !== 'Принять') return;
-
-        const wrapper = buttonElement.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions');
-        if (!wrapper) return;
-
-        buttonElement.dataset.tracked = 'true';
-
-        const x = event.clientX;
-        const y = event.clientY;
-
-        createFlyingNumber(x, y, '+1 линк', 'accept');
-
-        const username = getCurrentUsername();
-        sendToGoogleSheet('Принять', '+1', username);
-    }
-
-    // Обработка кнопки закрытия уведомления "Получить Линки"
-    function handleCallNotificationClose(event) {
-        const closeButton = event.target;
-
-        // Проверяем, что это кнопка закрытия
-        if (!closeButton.classList.contains('f5-notifier-notification-close')) return;
-
-        // Находим родительское уведомление
-        const notification = closeButton.closest('.f5-notifier-notification');
-        if (!notification) return;
-
-        // Проверяем, что это уведомление "Получить Линки"
-        const title = notification.querySelector('.f5-notifier-notification-head-title');
-        const content = notification.querySelector('.f5-notifier-notification-content');
-
-        const isCallNotification = (title && title.textContent.trim() === 'Получить Линки') ||
-                                   (content && content.textContent.includes('10 Линков'));
-
-        if (!isCallNotification) return;
-
-        // Получаем уникальный ID уведомления
-        const notificationId = notification.dataset.notification_id || notification.dataset.event_group;
-        if (!notificationId) return;
-
-        // Проверяем, не обрабатывали ли уже это уведомление
-        if (processedCallNotifications.has(notificationId)) return;
-
-        // Помечаем как обработанное
-        processedCallNotifications.add(notificationId);
-
-        // Получаем координаты для анимации
-        const rect = closeButton.getBoundingClientRect();
-        const x = rect.left + rect.width / 2;
-        const y = rect.top;
-
-        // Создаем анимацию +10 линков
-        createFlyingNumber(x, y, '+10 линков', 'goToLead');
-
-        // Отправляем в таблицу на лист "Звонки"
-        const username = getCurrentUsername();
-        sendToGoogleSheet('Звонки', '+10', username);
-    }
-
-    // Поиск и обработка кнопок "Перейти к сделке"
-    function processGoToLeadButtons() {
-        const containers = document.querySelectorAll('#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div');
-
-        containers.forEach(container => {
-            const goToLeadButton = container.querySelector('.button-input-inner__text');
-            if (goToLeadButton && goToLeadButton.textContent.trim() === 'Перейти к сделке' && !goToLeadButton.dataset.autoProcessed) {
-                processGoToLeadButton(goToLeadButton);
-            }
-        });
-    }
-
-    // Поиск и навешивание обработчиков на кнопки "Принять"
-    function setupAcceptButtons() {
-        document.querySelectorAll('.button-input-inner__text').forEach(btn => {
-            const text = btn.textContent.trim();
-            if (text === 'Принять' && !btn.dataset.tracked) {
-                const wrapper = btn.closest('.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions');
-                if (wrapper) {
-                    btn.addEventListener('click', handleAcceptClick);
-                }
-            }
-        });
-    }
-
-    // Поиск и навешивание обработчиков на кнопки закрытия уведомлений "Получить Линки"
-    function setupCallNotificationHandlers() {
-        // Ищем все уведомления "Получить Линки"
-        const notifications = document.querySelectorAll('.f5-notifier-notification');
-
-        notifications.forEach(notification => {
-            const title = notification.querySelector('.f5-notifier-notification-head-title');
-            const content = notification.querySelector('.f5-notifier-notification-content');
-
-            const isCallNotification = (title && title.textContent.trim() === 'Получить Линки') ||
-                                       (content && content.textContent.includes('10 Линков'));
-
-            if (!isCallNotification) return;
-
-            const notificationId = notification.dataset.notification_id || notification.dataset.event_group;
-            if (!notificationId || processedCallNotifications.has(notificationId)) return;
-
-            // Находим кнопку закрытия внутри уведомления
-            const closeButton = notification.querySelector('.f5-notifier-notification-close');
-            if (closeButton && !closeButton.dataset.callHandlerAttached) {
-                closeButton.addEventListener('click', handleCallNotificationClose);
-                closeButton.dataset.callHandlerAttached = 'true';
-            }
-        });
-    }
-
-    // MutationObserver для отслеживания новых элементов
-    observer = new MutationObserver((mutations) => {
-        let hasNewNodes = false;
-
-        mutations.forEach(mutation => {
-            if (mutation.addedNodes.length > 0) {
-                hasNewNodes = true;
-            }
-        });
-
-        if (hasNewNodes) {
-            setTimeout(() => {
-                processGoToLeadButtons();
-                setupAcceptButtons();
-                setupCallNotificationHandlers();
-            }, 100);
-        }
-    });
-
-    // Запускаем наблюдение
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    // Первичная обработка при загрузке
-    setTimeout(() => {
-        processGoToLeadButtons();
-        setupAcceptButtons();
-        setupCallNotificationHandlers();
-    }, 500);
-
-    // Периодическая проверка
-    setInterval(() => {
-        processGoToLeadButtons();
-        setupAcceptButtons();
-        setupCallNotificationHandlers();
-    }, 2000);
-
-};
-
-newLinks();
 
  function links_Bal() {
-    'use strict';
+  'use strict';
 
-    // === Настройки ===
-    const PUBLISHED_SHEET_ID = '2PACX-1vQBXU8TJZJsZ9Lb50UWtiJDs6IJ564Y7PBeKmwjlo--NQEDcOsuh9qhuplqUXj-lFkNP6owi5T9BZRO';
-    const GID = '643816085';
-    const EXPORT_URL = `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_SHEET_ID}/pub?output=csv&gid=${GID}`;
-    const SVG_URL = 'https://raw.githubusercontent.com/Xemul032/AmoCRM/refs/heads/main/lonk_logo_wt.svg';
+  // ══════════════════════════════════════════════════════════
+  // КОНФИГУРАЦИЯ — измените URL на адрес вашего сервера
+  // ══════════════════════════════════════════════════════════
+  const LINKSHOP_URL = 'http://192.168.137.66:3000'; // ← укажите адрес сервера
 
-    const SELECTORS = {
-        navMenu: '#nav_menu',
-        userName: '#left_menu > div.nav__top > div.nav__top__userbar > div.nav__top__userbar__userinfo.js-manage-profile > div',
-        menuItem: '#nav_menu > div[class*="nav"]'
-    };
+  const LOGO_SVG_URL = 'https://raw.githubusercontent.com/Xemul032/AmoCRM/refs/heads/main/link_logo_wt.svg';
 
-    // === Стили - подстраиваем под дизайн меню ===
-    GM_addStyle(`
-        #gs-tooltip-btn {
-            /* Размеры как у остальных иконок */
-            width: 48px !important;
-            height: 48px !important;
-            min-width: 48px !important;
-            min-height: 48px !important;
-
-            /* Прозрачный фон как у других иконок */
-            background: transparent !important;
-            border: none !important;
-            outline: none !important;
-
-            /* Иконка */
-            color: rgba(255, 255, 255, 0.7) !important;
-            font-size: 28px !important;
-            cursor: pointer !important;
-
-            /* Позиционирование */
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            margin: 0 auto !important;
-            padding: 12px 0 !important;
-
-            /* Анимации */
-            transition: all 0.25s ease !important;
-            opacity: 0.85 !important;
-        }
-
-        #gs-tooltip-btn svg {
-            width: 32px !important;
-            height: 32px !important;
-            fill: rgba(255, 255, 255, 0.7) !important;
-            transition: all 0.25s ease !important;
-        }
-
-        #gs-tooltip-btn:hover svg {
-            fill: rgba(255, 255, 255, 1) !important;
-        }
-
-        #gs-tooltip-btn:hover {
-            color: rgba(255, 255, 255, 1) !important;
-            opacity: 1 !important;
-            transform: scale(1.05) !important;
-        }
-
-        #gs-tooltip-btn:active {
-            transform: scale(0.95) !important;
-        }
-
-        #gs-tooltip-btn.loading {
-            pointer-events: none;
-            opacity: 0.6 !important;
-        }
-
-        #gs-tooltip-btn.loading::after {
-            content: "";
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            border: 2px solid rgba(255,255,255,0.2);
-            border-top-color: rgba(255,255,255,0.8);
-            border-radius: 50%;
-            animation: gs-spin 0.8s linear infinite;
-        }
-
-        @keyframes gs-spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Контейнер для кнопки с подписью (как у других элементов меню) */
-        #gs-tooltip-btn-wrapper {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: center !important;
-            justify-content: center !important;
-            padding: 12px 0 !important;
-            cursor: pointer !important;
-            transition: all 0.25s ease !important;
-        }
-
-        #gs-tooltip-btn-wrapper:hover {
-            background: rgba(255, 255, 255, 0.05) !important;
-        }
-
-        #gs-tooltip-btn-wrapper:hover #gs-tooltip-btn {
-            color: rgba(255, 255, 255, 1) !important;
-        }
-
-        .gs-tooltip-btn-label {
-            color: rgba(255, 255, 255, 0.7) !important;
-            font-size: 11px !important;
-            font-family: inherit !important;
-            margin-top: 4px !important;
-            text-align: center !important;
-            white-space: nowrap !important;
-        }
-
-        #gs-tooltip-btn-wrapper:hover .gs-tooltip-btn-label {
-            color: rgba(255, 255, 255, 1) !important;
-        }
-
-        /* Тултип */
-        .gs-tooltip {
-            position: fixed;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: #fff;
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-            z-index: 2147483646 !important;
-            max-width: 350px;
-            pointer-events: auto;
-            animation: gs-fadeIn 0.3s ease;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .gs-tooltip.success {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-        }
-        .gs-tooltip.error {
-            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
-        }
-        .gs-tooltip .value {
-            font-weight: bold;
-            font-size: 20px;
-            margin-top: 6px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        @keyframes gs-fadeIn {
-            from { opacity: 0; transform: translateY(-10px) scale(0.95); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .gs-tooltip.hide {
-            animation: gs-fadeOut 0.2s ease forwards;
-        }
-        @keyframes gs-fadeOut {
-            to { opacity: 0; transform: translateY(-10px) scale(0.95); }
-        }
-    `);
-
-    // === Глобальная переменная для SVG ===
-    let svgContent = '';
-
-    // === Загрузка SVG ===
-    function loadSVG() {
-        return new Promise((resolve) => {
-            if (svgContent) {
-                resolve(svgContent);
-                return;
-            }
-            
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: SVG_URL,
-                onload: (response) => {
-                    if (response.status === 200) {
-                        svgContent = response.responseText;
-                        resolve(svgContent);
-                    } else {
-                        // Fallback на эмодзи если SVG не загрузился
-                        resolve('💶');
-                    }
-                },
-                onerror: () => {
-                    // Fallback на эмодзи при ошибке
-                    resolve('💶');
-                }
-            });
-        });
+  // ══════════════════════════════════════════════════════════
+  // Стили
+  // ══════════════════════════════════════════════════════════
+  GM_addStyle(`
+    #ls-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      z-index: 99999;
+      align-items: center;
+      justify-content: center;
+    }
+    #ls-overlay.open {
+      display: flex;
     }
 
-    // === Создание кнопки ===
-    async function createButton() {
-        if (document.getElementById('gs-tooltip-btn')) return;
-
-        // Загружаем SVG
-        const iconContent = await loadSVG();
-
-        // Создаём обёртку (как у других элементов меню с подписью)
-        const wrapper = document.createElement('div');
-        wrapper.id = 'gs-tooltip-btn-wrapper';
-
-        // Создаём кнопку
-        const btn = document.createElement('button');
-        btn.id = 'gs-tooltip-btn';
-        btn.title = 'Показать баланс линков';
-        btn.type = 'button';
-        
-        // Вставляем SVG или эмодзи
-        if (iconContent.includes('<svg')) {
-            btn.innerHTML = iconContent;
-        } else {
-            btn.textContent = iconContent;
-        }
-
-        // Создаём подпись (как "Почта", "Настройки" и т.д.)
-        const label = document.createElement('span');
-        label.className = 'gs-tooltip-btn-label';
-        label.textContent = 'Линки';
-
-        wrapper.appendChild(btn);
-        wrapper.appendChild(label);
-
-        // Обработчик клика на обёртку
-        wrapper.addEventListener('click', handleClick);
-
-        // Ищем контейнер меню
-        const navMenu = document.querySelector(SELECTORS.navMenu);
-        if (!navMenu) {
-            setTimeout(createButton, 500);
-            return;
-        }
-
-        // === Копируем отступы из существующих элементов меню ===
-        const menuItems = navMenu.querySelectorAll('div[class*="nav"], div[class*="menu"]');
-        let referenceElement = null;
-        let itemSpacing = '12px';
-
-        // Находим элемент "Настройки" для вставки после него
-        for (let item of menuItems) {
-            const text = item.textContent || '';
-            if (text.includes('Настройки')) {
-                referenceElement = item;
-                // Копируем padding/margin с существующего элемента
-                const computedStyle = window.getComputedStyle(item);
-                itemSpacing = computedStyle.paddingTop || computedStyle.marginTop || '12px';
-                break;
-            }
-        }
-
-        // Вставляем после "Настроек"
-        if (referenceElement && referenceElement.parentNode) {
-            referenceElement.parentNode.insertBefore(wrapper, referenceElement.nextSibling);
-        } else {
-            navMenu.appendChild(wrapper);
-        }
-
-        // Применяем отступы как у соседних элементов
-        setTimeout(() => {
-            const siblings = navMenu.children;
-            for (let sibling of siblings) {
-                if (sibling.id !== 'gs-tooltip-btn-wrapper') {
-                    const computedStyle = window.getComputedStyle(sibling);
-                    const padding = computedStyle.padding;
-                    const margin = computedStyle.margin;
-                    // Применяем похожие отступы
-                    if (padding && padding !== '0px') {
-                        wrapper.style.padding = padding;
-                    }
-                    break;
-                }
-            }
-        }, 100);
+    #ls-modal {
+      position: relative;
+      width: min(860px, 95vw);
+      height: min(640px, 92vh);
+      background: #1a1d27;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      animation: lsSlideIn 0.25s ease;
+    }
+    @keyframes lsSlideIn {
+      from { opacity: 0; transform: scale(0.96) translateY(10px); }
+      to   { opacity: 1; transform: none; }
     }
 
-// === Обработчик клика ===
-async function handleClick(event) {
-    const btn = document.getElementById('gs-tooltip-btn');
-    const wrapper = document.getElementById('gs-tooltip-btn-wrapper');
-    if (!btn || !wrapper || btn.classList.contains('loading')) return;
-
-    // Получаем координаты клика
-    const clickX = event.clientX;
-    const clickY = event.clientY;
-
-    // Удаляем старый тултип
-    removeTooltip();
-
-    btn.classList.add('loading');
-
-    try {
-        const userName = getCurrentUserName();
-        if (!userName) {
-            showTooltip('⚠️ Не удалось получить имя пользователя', 'error', clickX, clickY);
-            return;
-        }
-
-        const data = await fetchSheetData();
-        const value = findValueByName(data, userName);
-
-        if (value !== null) {
-            // Изменено: показываем "Баланс Линков" и значение
-            showTooltip(`Баланс Линков<div class="value">${value}</div>`, 'success', clickX, clickY);
-        } else {
-            showTooltip(`❌ Пользователь "<b>${userName}</b>" не найден в таблице`, 'error', clickX, clickY);
-        }
-    } catch (err) {
-        console.error('GS Tooltip Error:', err);
-        showTooltip(`🔥 Ошибка: ${err.message}`, 'error', clickX, clickY);
-    } finally {
-        btn.classList.remove('loading');
+    #ls-titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: linear-gradient(90deg, #0085CA 100%,  #ffffff 0%);
+      border-bottom: 1px solid rgba(0, 133, 202, 0.3);
+      flex-shrink: 0;
     }
-}
-
-    // === Получение имени пользователя из DOM ===
-    function getCurrentUserName() {
-        const el = document.querySelector(SELECTORS.userName);
-        if (!el) return null;
-
-        let name = el.textContent || el.innerText;
-        name = name.replace(/<[^>]*>/g, '').trim();
-        name = name.replace(/\s+/g, ' ');
-
-        return name || null;
+    #ls-titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    #ls-titlebar .ls-logo-img {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+    #ls-titlebar .ls-logo-img svg,
+    #ls-titlebar .ls-logo-img img {
+      width: 28px;
+      height: 28px;
+      filter: drop-shadow(0 0 6px rgba(0, 133, 202, 0.9)) drop-shadow(0 0 14px rgba(0, 133, 202, 0.5));
+    }
+    #ls-titlebar .ls-logo-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    #ls-titlebar .ls-user-tag {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.75);
+      font-family: 'Segoe UI', system-ui, sans-serif;
     }
 
-    // === Загрузка и парсинг Google Таблицы ===
-    function fetchSheetData() {
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: EXPORT_URL,
-                headers: {
-                    'Accept': 'text/csv'
-                },
-                onload: (response) => {
-                    if (response.status === 200 || response.status === 302) {
-                        const data = parseCSV(response.responseText);
-                        resolve(data);
-                    } else {
-                        reject(new Error(`HTTP ${response.status}: ${response.statusText || 'Unknown error'}`));
-                    }
-                },
-                onerror: (err) => {
-                    console.error('GM_xmlhttpRequest error:', err);
-                    reject(new Error('Network error while fetching sheet'));
-                },
-                ontimeout: () => reject(new Error('Request timeout (15s)')),
-                timeout: 15000
-            });
-        });
+    #ls-close {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    #ls-close:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.2);
     }
 
-    // === CSV-парсер ===
-    function parseCSV(text) {
-        const rows = [];
-        let current = '';
-        let inQuotes = false;
-        const cells = [];
-
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            const next = text[i + 1];
-
-            if (char === '"' && !inQuotes) {
-                inQuotes = true;
-            } else if (char === '"' && inQuotes && next === '"') {
-                current += '"';
-                i++;
-            } else if (char === '"' && inQuotes) {
-                inQuotes = false;
-            } else if (char === ',' && !inQuotes) {
-                cells.push(current.trim());
-                current = '';
-            } else if ((char === '\n' || char === '\r') && !inQuotes) {
-                if (current || cells.length > 0) {
-                    cells.push(current.trim());
-                    rows.push([...cells]);
-                    cells.length = 0;
-                    current = '';
-                }
-                if (char === '\r' && next === '\n') i++;
-            } else {
-                current += char;
-            }
-        }
-        if (current || cells.length > 0) {
-            cells.push(current.trim());
-            rows.push(cells);
-        }
-
-        const result = {};
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (row[1] && row[2] !== undefined) {
-                const name = row[1].trim();
-                const value = row[2].trim();
-                if (name) {
-                    result[name.toLowerCase()] = value;
-                }
-            }
-        }
-        return result;
+    #ls-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      display: block;
     }
 
-    // === Поиск значения по имени ===
-    function findValueByName(data, userName) {
-        const searchKey = userName.toLowerCase();
-
-        if (data[searchKey] !== undefined) {
-            return data[searchKey];
-        }
-
-        for (const [key, value] of Object.entries(data)) {
-            if (key.includes(searchKey) || searchKey.includes(key)) {
-                return value;
-            }
-        }
-
-        return null;
+    /* ── Кнопка в левом меню nav_menu ── */
+    #ls-nav-btn-wrapper {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 12px 0 !important;
+      cursor: pointer !important;
+      transition: all 0.25s ease !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
     }
-
-    // === Показ тултипа ===
-    function showTooltip(html, type = '', x, y) {
-        removeTooltip();
-
-        const tooltip = document.createElement('div');
-        tooltip.className = `gs-tooltip ${type}`;
-        tooltip.innerHTML = html;
-
-        const tooltipWidth = 350;
-        const tooltipHeight = 100;
-        const padding = 15;
-
-        let left = x - tooltipWidth / 2;
-        let top = y + padding;
-
-        if (left < 10) left = 10;
-        if (left + tooltipWidth > window.innerWidth - 10) {
-            left = window.innerWidth - tooltipWidth - 10;
-        }
-        if (top + tooltipHeight > window.innerHeight - 10) {
-            top = y - tooltipHeight - padding;
-        }
-        if (top < 10) top = 10;
-
-        tooltip.style.left = `${left}px`;
-        tooltip.style.top = `${top}px`;
-
-        document.body.appendChild(tooltip);
-
-        setTimeout(() => {
-            tooltip.classList.add('hide');
-            setTimeout(() => tooltip.remove(), 300);
-        }, 5000);
-
-        tooltip.addEventListener('click', () => {
-            tooltip.classList.add('hide');
-            setTimeout(() => tooltip.remove(), 300);
-        });
+    #ls-nav-btn-wrapper:hover {
+      background: rgba(255, 255, 255, 0.05) !important;
     }
-
-    function removeTooltip() {
-        const t = document.querySelector('.gs-tooltip');
-        if (t) {
-            t.classList.add('hide');
-            setTimeout(() => t.remove(), 300);
-        }
+    #ls-nav-btn {
+      width: 48px !important;
+      height: 48px !important;
+      min-width: 48px !important;
+      min-height: 48px !important;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      color: rgba(255, 255, 255, 0.7) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      transition: all 0.25s ease !important;
+      opacity: 0.85 !important;
+      position: relative !important;
     }
-
-    // === Инициализация ===
-    function init() {
-        if (document.querySelector(SELECTORS.userName)) {
-            createButton();
-        } else {
-            setTimeout(init, 500);
-        }
+    #ls-nav-btn svg {
+      width: 32px !important;
+      height: 32px !important;
+      fill: rgba(255, 255, 255, 0.7) !important;
+      transition: all 0.25s ease !important;
+      filter: drop-shadow(0 0 5px rgba(0, 133, 202, 0.7)) drop-shadow(0 0 10px rgba(0, 133, 202, 0.35)) !important;
     }
+    #ls-nav-btn:hover svg,
+    #ls-nav-btn-wrapper:hover #ls-nav-btn svg {
+      fill: rgba(255, 255, 255, 1) !important;
+    }
+    #ls-nav-btn:hover,
+    #ls-nav-btn-wrapper:hover #ls-nav-btn {
+      opacity: 1 !important;
+      transform: scale(1.05) !important;
+    }
+    #ls-nav-btn:active {
+      transform: scale(0.95) !important;
+    }
+    #ls-nav-btn.loading {
+      pointer-events: none;
+      opacity: 0.6 !important;
+    }
+    #ls-nav-btn.loading::after {
+      content: "";
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: rgba(255,255,255,0.8);
+      border-radius: 50%;
+      animation: ls-nav-spin 0.8s linear infinite;
+    }
+    @keyframes ls-nav-spin {
+      to { transform: rotate(360deg); }
+    }
+    .ls-nav-btn-label {
+      color: rgba(255, 255, 255, 0.7) !important;
+      font-size: 11px !important;
+      font-family: inherit !important;
+      margin-top: 4px !important;
+      text-align: center !important;
+      white-space: nowrap !important;
+      transition: color 0.25s ease !important;
+    }
+    #ls-nav-btn-wrapper:hover .ls-nav-btn-label {
+      color: rgba(255, 255, 255, 1) !important;
+    }
+  `);
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+  // ══════════════════════════════════════════════════════════
+  // Загрузка SVG-иконки
+  // ══════════════════════════════════════════════════════════
+  let _svgCache = null;
+
+  function loadSVG() {
+    return new Promise((resolve) => {
+      if (_svgCache) { resolve(_svgCache); return; }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: LOGO_SVG_URL,
+        onload(res) {
+          _svgCache = (res.status === 200 && res.responseText.includes('<svg'))
+            ? res.responseText
+            : '🔗';
+          resolve(_svgCache);
+        },
+        onerror() { _svgCache = '🔗'; resolve(_svgCache); }
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Получить имя пользователя из интерфейса amoCRM
+  // ══════════════════════════════════════════════════════════
+  function getAmoCrmUserName() {
+    const SELECTOR =
+      '#left_menu > div.nav__top > div.nav__top__userbar > ' +
+      'div.nav__top__userbar__userinfo.js-manage-profile > div';
+
+    const container = document.querySelector(SELECTOR);
+    if (!container) return null;
+
+    const nameEl = container.querySelector('.nav__top__userbar__userinfo__username');
+    const source = nameEl || container;
+
+    let name = source.textContent || source.innerText || '';
+    name = name.replace(/<[^>]*>/g, '').trim().replace(/\s+/g, ' ');
+    return name || null;
+  }
+
+  function parseName(fullName) {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 0) return null;
+    const first_name = parts[0];
+    const last_name  = parts.slice(1).join(' ') || parts[0];
+    return { first_name, last_name };
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Создание DOM-элементов
+  // ══════════════════════════════════════════════════════════
+  let currentUser = null;
+
+  async function createUI() {
+    const iconContent = await loadSVG();
+
+    // ── Модальный оверлей ──────────────────────────────────
+    const overlay = document.createElement('div');
+    overlay.id = 'ls-overlay';
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeShop();
+    });
+
+    const modal = document.createElement('div');
+    modal.id = 'ls-modal';
+
+    // Шапка (titlebar)
+    const titlebar = document.createElement('div');
+    titlebar.id = 'ls-titlebar';
+
+    const left = document.createElement('div');
+    left.id = 'ls-titlebar-left';
+
+    // Иконка
+    const logoWrap = document.createElement('span');
+    logoWrap.className = 'ls-logo-img';
+    if (iconContent.includes('<svg')) {
+      logoWrap.innerHTML = iconContent;
     } else {
-        init();
+      logoWrap.textContent = iconContent;
     }
 
-};
+    // Текст заголовка
+    const logoText = document.createElement('span');
+    logoText.className = 'ls-logo-text';
+    logoText.textContent = 'Линк Маркет';
+
+    const userTag = document.createElement('span');
+    userTag.className = 'ls-user-tag';
+    userTag.id = 'ls-user-tag';
+
+    left.appendChild(logoWrap);
+    left.appendChild(logoText);
+    left.appendChild(userTag);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'ls-close';
+    closeBtn.innerHTML = '✕';
+    closeBtn.title = 'Закрыть';
+    closeBtn.addEventListener('click', closeShop);
+
+    titlebar.appendChild(left);
+    titlebar.appendChild(closeBtn);
+
+    const frame = document.createElement('iframe');
+    frame.id = 'ls-frame';
+    frame.title = 'Линк Маркет';
+    frame.setAttribute('allow', 'same-origin');
+
+    modal.appendChild(titlebar);
+    modal.appendChild(frame);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeShop();
+    });
+
+    // ── Кнопка в левом меню ────────────────────────────────
+    createNavButton(iconContent);
+  }
+
+  function createNavButton(iconContent) {
+    if (document.getElementById('ls-nav-btn-wrapper')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'ls-nav-btn-wrapper';
+
+    const btn = document.createElement('button');
+    btn.id = 'ls-nav-btn';
+    btn.title = 'Линк Маркет';
+    btn.type = 'button';
+
+    if (iconContent.includes('<svg')) {
+      btn.innerHTML = iconContent;
+    } else {
+      btn.textContent = iconContent;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'ls-nav-btn-label';
+    label.textContent = 'Линк Маркет';
+
+    wrapper.appendChild(btn);
+    wrapper.appendChild(label);
+    wrapper.addEventListener('click', openShop);
+
+    // Вставляем в #nav_menu после элемента "Настройки"
+    const navMenu = document.querySelector('#nav_menu');
+    if (!navMenu) {
+      setTimeout(() => createNavButton(iconContent), 500);
+      return;
+    }
+
+    let referenceElement = null;
+    const menuItems = navMenu.querySelectorAll('div[class*="nav"], div[class*="menu"]');
+    for (const item of menuItems) {
+      if ((item.textContent || '').includes('Настройки')) {
+        referenceElement = item;
+        break;
+      }
+    }
+
+    if (referenceElement && referenceElement.parentNode) {
+      referenceElement.parentNode.insertBefore(wrapper, referenceElement.nextSibling);
+    } else {
+      navMenu.appendChild(wrapper);
+    }
+  }
+
+  function openShop() {
+    const fullName = getAmoCrmUserName();
+
+    if (!fullName) {
+      alert('Линк Маркет: не удалось определить пользователя.\nПроверьте структуру страницы amoCRM.');
+      return;
+    }
+
+    const parsed = parseName(fullName);
+    if (!parsed) return;
+
+    currentUser = parsed;
+
+    document.getElementById('ls-user-tag').textContent = fullName;
+
+    const shopUrl = `${LINKSHOP_URL}/shop?first_name=${encodeURIComponent(parsed.first_name)}&last_name=${encodeURIComponent(parsed.last_name)}&server=${encodeURIComponent(LINKSHOP_URL)}`;
+    document.getElementById('ls-frame').src = shopUrl;
+
+    document.getElementById('ls-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    fetchBalance(parsed.first_name, parsed.last_name);
+  }
+
+  function closeShop() {
+    const overlay = document.getElementById('ls-overlay');
+    const frame   = document.getElementById('ls-frame');
+    if (overlay) overlay.classList.remove('open');
+    if (frame)   frame.src = '';
+    document.body.style.overflow = '';
+
+    if (currentUser) {
+      fetchBalance(currentUser.first_name, currentUser.last_name);
+    }
+  }
+
+  async function fetchBalance(firstName, lastName) {
+    try {
+      const url = `${LINKSHOP_URL}/api/user/balance?first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}`;
+      const res  = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // баланс получен, но метка не обновляется — всегда остаётся "Линк Маркет"
+    } catch (e) {
+      // Сервер недоступен — ничего не делаем
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // НАЧИСЛЕНИЕ ЛИНКОВ — интеграция с newLinks()
+  // ══════════════════════════════════════════════════════════
+
+  function addLinksToCurrentUser(amount, reason) {
+    const fullName = getAmoCrmUserName();
+    if (!fullName) {
+      console.warn('[LinkShop] addLinks: не удалось определить пользователя');
+      return;
+    }
+
+    GM_xmlhttpRequest({
+      method: 'POST',
+      url:    `${LINKSHOP_URL}/api/user/add-links`,
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({ full_name: fullName, amount, reason }),
+      onload(res) {
+        try {
+          const data = JSON.parse(res.responseText);
+          if (data.ok) {
+            console.log(`[LinkShop] +${amount} линков (${reason}) → ${fullName}. Баланс: ${data.new_balance}`);
+            const parsed = parseName(fullName);
+            if (parsed) fetchBalance(parsed.first_name, parsed.last_name);
+          } else {
+            console.warn('[LinkShop] add-links error:', data.error);
+          }
+        } catch (e) {
+          console.warn('[LinkShop] add-links parse error:', e);
+        }
+      },
+      onerror(err) {
+        console.warn('[LinkShop] add-links request failed:', err);
+      }
+    });
+  }
+
+  // ── CSS для летающих чисел ─────────────────────────────────
+  GM_addStyle(`
+    .ls-flying-number {
+      position: fixed !important;
+      pointer-events: none;
+      font-weight: bold;
+      font-size: 18px;
+      z-index: 2147483647 !important;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      color: #17A6ED;
+      animation: lsFlyUp 3s ease-out forwards;
+    }
+    @keyframes lsFlyUp {
+      0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+      60%  { opacity: 1; transform: translate(0, -180px) scale(1.15); }
+      100% { opacity: 0; transform: translate(0, -340px) scale(0.8); }
+    }
+  `);
+
+  function createFlyingNumber(x, y, text) {
+    const el = document.createElement('div');
+    el.className = 'ls-flying-number';
+    el.textContent = text;
+    el.style.left = `${x - 30}px`;
+    el.style.top  = `${y - 10}px`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  // ── Обработчики действий ──────────────────────────────────
+
+  let processedButtons           = new Set();
+  let processedCallNotifications = new Set();
+
+  // "Перейти к сделке" → +5 линков (автоматически при появлении)
+  function processGoToLeadButtons() {
+    const containers = document.querySelectorAll(
+      '#f5_smartresp_acceptance_right_bottom > div.smartresp_wrapper_items > div'
+    );
+    containers.forEach(container => {
+      const btn = container.querySelector('.button-input-inner__text');
+      if (!btn || btn.textContent.trim() !== 'Перейти к сделке') return;
+      if (btn.dataset.lsProcessed) return;
+
+      btn.dataset.lsProcessed = 'true';
+
+      const rect = btn.getBoundingClientRect();
+      createFlyingNumber(rect.left + rect.width / 2, rect.top, '+5 линков');
+      addLinksToCurrentUser(5, 'Перейти к сделке');
+    });
+  }
+
+  // "Принять" → +1 линк (по клику)
+  function handleAcceptClick(event) {
+    const btn = event.target.closest('.button-input-inner__text');
+    if (!btn || btn.textContent.trim() !== 'Принять') return;
+    if (btn.dataset.lsTracked) return;
+
+    const wrapper = btn.closest(
+      '.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions'
+    );
+    if (!wrapper) return;
+
+    btn.dataset.lsTracked = 'true';
+    createFlyingNumber(event.clientX, event.clientY, '+1 линк');
+    addLinksToCurrentUser(1, 'Принять');
+  }
+
+  // Закрытие уведомления "Получить Линки" → +10 линков
+  function handleCallNotificationClose(event) {
+    const closeBtn = event.target.closest('.f5-notifier-notification-close');
+    if (!closeBtn) return;
+
+    const notification = closeBtn.closest('.f5-notifier-notification');
+    if (!notification) return;
+
+    const title   = notification.querySelector('.f5-notifier-notification-head-title');
+    const content = notification.querySelector('.f5-notifier-notification-content');
+    const isCall  = (title && title.textContent.trim() === 'Получить Линки') ||
+                    (content && content.textContent.includes('10 Линков'));
+    if (!isCall) return;
+
+    const nid = notification.dataset.notification_id || notification.dataset.event_group;
+    if (!nid || processedCallNotifications.has(nid)) return;
+    processedCallNotifications.add(nid);
+
+    const rect = closeBtn.getBoundingClientRect();
+    createFlyingNumber(rect.left + rect.width / 2, rect.top, '+10 линков');
+    addLinksToCurrentUser(10, 'Звонки');
+  }
+
+  // Навешиваем обработчики на кнопки "Принять"
+  function setupAcceptButtons() {
+    document.querySelectorAll('.button-input-inner__text').forEach(btn => {
+      if (btn.textContent.trim() !== 'Принять') return;
+      if (btn.dataset.lsHooked) return;
+      const wrapper = btn.closest(
+        '.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions'
+      );
+      if (!wrapper) return;
+      btn.dataset.lsHooked = 'true';
+      btn.addEventListener('click', handleAcceptClick);
+    });
+  }
+
+  // Навешиваем обработчики на уведомления "Получить Линки"
+  function setupCallNotificationHandlers() {
+    document.querySelectorAll('.f5-notifier-notification').forEach(notification => {
+      const title   = notification.querySelector('.f5-notifier-notification-head-title');
+      const content = notification.querySelector('.f5-notifier-notification-content');
+      const isCall  = (title && title.textContent.trim() === 'Получить Линки') ||
+                      (content && content.textContent.includes('10 Линков'));
+      if (!isCall) return;
+
+      const closeBtn = notification.querySelector('.f5-notifier-notification-close');
+      if (!closeBtn || closeBtn.dataset.lsHooked) return;
+      closeBtn.dataset.lsHooked = 'true';
+      closeBtn.addEventListener('click', handleCallNotificationClose);
+    });
+  }
+
+  // ── MutationObserver — следим за новыми элементами ────────
+  function startActivityObserver() {
+    const observer = new MutationObserver((mutations) => {
+      const hasNew = mutations.some(m => m.addedNodes.length > 0);
+      if (!hasNew) return;
+      setTimeout(() => {
+        processGoToLeadButtons();
+        setupAcceptButtons();
+        setupCallNotificationHandlers();
+        // Перепроверяем кнопку в меню (меню может загружаться позже)
+        if (!document.getElementById('ls-nav-btn-wrapper') && _svgCache) {
+          createNavButton(_svgCache);
+        }
+      }, 150);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // Инициализация — ждём загрузки userbar amoCRM
+  // ══════════════════════════════════════════════════════════
+  function init() {
+    createUI();
+    startActivityObserver();
+
+    processGoToLeadButtons();
+    setupAcceptButtons();
+    setupCallNotificationHandlers();
+
+    const fullName = getAmoCrmUserName();
+    if (fullName) {
+      const parsed = parseName(fullName);
+      if (parsed) fetchBalance(parsed.first_name, parsed.last_name);
+    } else {
+      const nameObserver = new MutationObserver(() => {
+        const name = getAmoCrmUserName();
+        if (name) {
+          nameObserver.disconnect();
+          const parsed = parseName(name);
+          if (parsed) fetchBalance(parsed.first_name, parsed.last_name);
+        }
+      });
+      nameObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  if (document.readyState === 'complete') {
+    init();
+  } else {
+    window.addEventListener('load', init);
+  };
+  }
 
 links_Bal();
 

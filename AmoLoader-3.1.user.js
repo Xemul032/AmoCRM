@@ -9,7 +9,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      192.168.137.35
-// @connect      192.168.137.66:3000
+// @connect      192.168.137.66
 // @connect      sheets.googleapis.com
 // @connect      docs.google.com
 // @connect      script.google.com

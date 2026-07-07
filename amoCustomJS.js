@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      3.0
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
@@ -1262,7 +1262,7 @@ notification();
 
 
  function links_Bal() {
-  'use strict';
+'use strict';
 
   // ══════════════════════════════════════════════════════════
   // КОНФИГУРАЦИЯ — измените URL на адрес вашего сервера
@@ -1739,10 +1739,15 @@ notification();
     setTimeout(() => el.remove(), 3000);
   }
 
-  // ── Обработчики действий ──────────────────────────────────
+  // ── Обработчики действий (document-level delegation) ─────
+  //
+  // Единый listener на document перехватывает все клики,
+  // независимо от того, когда amoCRM создала/пересоздала DOM-элемент.
+  // Это надёжнее чем навешивать на каждый элемент отдельно.
 
-  let processedButtons           = new Set();
-  let processedCallNotifications = new Set();
+  // Защита от двойного начисления по ID уведомления
+  const processedAcceptIds        = new Set();
+  const processedCallNotifications = new Set();
 
   // "Перейти к сделке" → +5 линков (автоматически при появлении)
   function processGoToLeadButtons() {
@@ -1762,84 +1767,80 @@ notification();
     });
   }
 
-  // "Принять" → +1 линк (по клику)
-  function handleAcceptClick(event) {
-    const btn = event.target.closest('.button-input-inner__text');
-    if (!btn || btn.textContent.trim() !== 'Принять') return;
-    if (btn.dataset.lsTracked) return;
-
-    const wrapper = btn.closest(
-      '.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions'
-    );
-    if (!wrapper) return;
-
-    btn.dataset.lsTracked = 'true';
-    createFlyingNumber(event.clientX, event.clientY, '+1 линк');
-    addLinksToCurrentUser(1, 'Принять');
-  }
-
-  // Закрытие уведомления "Получить Линки" → +10 линков
-  function handleCallNotificationClose(event) {
-    const closeBtn = event.target.closest('.f5-notifier-notification-close');
-    if (!closeBtn) return;
-
-    const notification = closeBtn.closest('.f5-notifier-notification');
-    if (!notification) return;
-
-    const title   = notification.querySelector('.f5-notifier-notification-head-title');
-    const content = notification.querySelector('.f5-notifier-notification-content');
-    const isCall  = (title && title.textContent.trim() === 'Получить Линки') ||
-                    (content && content.textContent.includes('10 Линков'));
-    if (!isCall) return;
-
-    const nid = notification.dataset.notification_id || notification.dataset.event_group;
-    if (!nid || processedCallNotifications.has(nid)) return;
-    processedCallNotifications.add(nid);
-
-    const rect = closeBtn.getBoundingClientRect();
-    createFlyingNumber(rect.left + rect.width / 2, rect.top, '+10 линков');
-    addLinksToCurrentUser(10, 'Звонки');
-  }
-
-  // Навешиваем обработчики на кнопки "Принять"
-  function setupAcceptButtons() {
-    document.querySelectorAll('.button-input-inner__text').forEach(btn => {
-      if (btn.textContent.trim() !== 'Принять') return;
-      if (btn.dataset.lsHooked) return;
-      const wrapper = btn.closest(
+  // Глобальный делегат — перехватывает ВСЕ клики на странице
+  function handleDocumentClick(event) {
+    // ── "Принять" → +1 линк ───────────────────────────────
+    const acceptBtn = event.target.closest('.button-input-inner__text');
+    if (acceptBtn && acceptBtn.textContent.trim() === 'Принять') {
+      const wrapper = acceptBtn.closest(
         '.f5-notifier-notification, #f5_smartresp_acceptance_right_bottom, .smartresp_wrapper_items, .wrapper_item_actions'
       );
-      if (!wrapper) return;
-      btn.dataset.lsHooked = 'true';
-      btn.addEventListener('click', handleAcceptClick);
-    });
+      if (wrapper) {
+        // Получаем уникальный ID уведомления для защиты от двойного начисления
+        const nid = wrapper.dataset.notification_id
+                 || wrapper.dataset.event_group
+                 || wrapper.dataset.id
+                 || null;
+
+        // Если есть ID — проверяем Set; если нет — используем флаг на элементе
+        const alreadyProcessed = nid
+          ? processedAcceptIds.has(nid)
+          : !!acceptBtn.dataset.lsTracked;
+
+        if (!alreadyProcessed) {
+          if (nid) processedAcceptIds.add(nid);
+          acceptBtn.dataset.lsTracked = 'true';
+          createFlyingNumber(event.clientX, event.clientY, '+1 линк');
+          addLinksToCurrentUser(1, 'Принять');
+        }
+      }
+    }
+
+    // ── Закрытие уведомления "Получить Линки" → +10 линков ─
+    const closeBtn = event.target.closest('.f5-notifier-notification-close');
+    if (closeBtn) {
+      const notification = closeBtn.closest('.f5-notifier-notification');
+      if (notification) {
+        const title   = notification.querySelector('.f5-notifier-notification-head-title');
+        const content = notification.querySelector('.f5-notifier-notification-content');
+        const isCall  = (title && title.textContent.trim() === 'Получить Линки') ||
+                        (content && content.textContent.includes('10 Линков'));
+
+        if (isCall) {
+          const nid = notification.dataset.notification_id
+                   || notification.dataset.event_group
+                   || notification.dataset.id
+                   || null;
+
+          const alreadyProcessed = nid
+            ? processedCallNotifications.has(nid)
+            : !!closeBtn.dataset.lsTracked;
+
+          if (!alreadyProcessed) {
+            if (nid) processedCallNotifications.add(nid);
+            closeBtn.dataset.lsTracked = 'true';
+            const rect = closeBtn.getBoundingClientRect();
+            createFlyingNumber(rect.left + rect.width / 2, rect.top, '+10 линков');
+            addLinksToCurrentUser(10, 'Звонки');
+          }
+        }
+      }
+    }
   }
 
-  // Навешиваем обработчики на уведомления "Получить Линки"
-  function setupCallNotificationHandlers() {
-    document.querySelectorAll('.f5-notifier-notification').forEach(notification => {
-      const title   = notification.querySelector('.f5-notifier-notification-head-title');
-      const content = notification.querySelector('.f5-notifier-notification-content');
-      const isCall  = (title && title.textContent.trim() === 'Получить Линки') ||
-                      (content && content.textContent.includes('10 Линков'));
-      if (!isCall) return;
+  // setupAcceptButtons / setupCallNotificationHandlers больше не нужны —
+  // вся логика в handleDocumentClick через delegation.
+  // Оставляем пустые заглушки для обратной совместимости на случай вызова из observer.
+  function setupAcceptButtons() {}
+  function setupCallNotificationHandlers() {}
 
-      const closeBtn = notification.querySelector('.f5-notifier-notification-close');
-      if (!closeBtn || closeBtn.dataset.lsHooked) return;
-      closeBtn.dataset.lsHooked = 'true';
-      closeBtn.addEventListener('click', handleCallNotificationClose);
-    });
-  }
-
-  // ── MutationObserver — следим за новыми элементами ────────
+  // ── MutationObserver — следим только за "Перейти к сделке" и кнопкой меню ──
   function startActivityObserver() {
     const observer = new MutationObserver((mutations) => {
       const hasNew = mutations.some(m => m.addedNodes.length > 0);
       if (!hasNew) return;
       setTimeout(() => {
         processGoToLeadButtons();
-        setupAcceptButtons();
-        setupCallNotificationHandlers();
         // Перепроверяем кнопку в меню (меню может загружаться позже)
         if (!document.getElementById('ls-nav-btn-wrapper') && _svgCache) {
           createNavButton(_svgCache);
@@ -1856,9 +1857,11 @@ notification();
     createUI();
     startActivityObserver();
 
+    // Единый обработчик кликов на уровне document — перехватывает
+    // "Принять" и "Получить Линки" независимо от пересоздания DOM
+    document.addEventListener('click', handleDocumentClick, true);
+
     processGoToLeadButtons();
-    setupAcceptButtons();
-    setupCallNotificationHandlers();
 
     const fullName = getAmoCrmUserName();
     if (fullName) {

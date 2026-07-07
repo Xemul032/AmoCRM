@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Быстрые ответы для заданий - amoCRM
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  Добавляет кнопку с быстрыми ответами, зависящими от типа задачи (определяется при клике)
 // @author       You
 // @match        https://cplink.amocrm.ru/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @connect      script.googleusercontent.com
-// @connect      192.168.137.66:3000
+// @connect      192.168.137.66
 // @connect      docs.google.com
 // @connect      googleusercontent.com
 // @connect      script.google.com
